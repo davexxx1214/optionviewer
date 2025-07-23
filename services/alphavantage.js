@@ -13,15 +13,20 @@ class AlphaVantageService {
     /**
      * 获取股票的实时价格数据
      * @param {string} symbol - 股票代码
+     * @param {boolean} forceRefresh - 是否强制刷新缓存
      * @returns {Promise<Object>} 股票价格数据
      */
-    async getStockPrice(symbol) {
+    async getStockPrice(symbol, forceRefresh = false) {
         const cacheKey = `price_${symbol}`;
-        const cachedData = this.getCachedData(cacheKey);
         
-        if (cachedData) {
-            console.log(`从缓存获取 ${symbol} 价格数据`);
-            return cachedData;
+        if (!forceRefresh) {
+            const cachedData = this.getCachedData(cacheKey);
+            if (cachedData) {
+                console.log(`从缓存获取 ${symbol} 价格数据`);
+                return cachedData;
+            }
+        } else {
+            console.log(`强制刷新 ${symbol} 价格数据`);
         }
 
         try {
@@ -113,6 +118,29 @@ class AlphaVantageService {
         }
         
         return results;
+    }
+
+    /**
+     * 强制刷新特定股票的价格数据
+     * @param {string} symbol - 股票代码
+     * @returns {Promise<Object>} 更新后的股票价格数据
+     */
+    async refreshStockPrice(symbol) {
+        try {
+            console.log(`强制刷新 ${symbol} 价格数据`);
+            
+            // 清除该股票的缓存
+            const cacheKey = `price_${symbol}`;
+            this.cache.delete(cacheKey);
+            
+            // 强制获取最新数据
+            const latestPriceData = await this.getStockPrice(symbol, true);
+            
+            return latestPriceData;
+        } catch (error) {
+            console.error(`强制刷新 ${symbol} 失败:`, error.message);
+            return this.getFallbackPrice(symbol);
+        }
     }
 
     /**

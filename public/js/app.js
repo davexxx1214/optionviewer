@@ -233,7 +233,7 @@ async function analyzeOptions() {
     try {
         const optionType = appState.selectedOptionType.includes('call') ? 'call' : 'put';
         const response = await fetch(
-            `/api/options/${appState.selectedStock.symbol}?type=${optionType}&days=${appState.selectedExpiry}`
+            `/api/options/${appState.selectedStock.symbol}?type=${optionType}&days=${appState.selectedExpiry}&refresh=true`
         );
         const result = await response.json();
         

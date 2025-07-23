@@ -94,6 +94,33 @@ function generateFallbackPrice(symbol) {
   return Math.round(price * 100) / 100;
 }
 
+// 强制刷新特定股票的缓存数据
+async function refreshStockCache(symbol) {
+  if (cachedStocks) {
+    console.log(`更新缓存中的 ${symbol} 数据`);
+    
+    // 获取新的价格数据
+    const newPriceData = await alphaVantageService.getStockPrice(symbol, true);
+    
+    // 找到并更新缓存中的股票数据
+    const stockIndex = cachedStocks.findIndex(stock => stock.symbol === symbol);
+    if (stockIndex !== -1) {
+      const stockInfo = stocksList.find(stock => stock.symbol === symbol);
+      cachedStocks[stockIndex] = {
+        ...stockInfo,
+        price: newPriceData.price,
+        open: newPriceData.open,
+        high: newPriceData.high,
+        low: newPriceData.low,
+        volume: newPriceData.volume,
+        timestamp: newPriceData.timestamp,
+        lastUpdated: newPriceData.lastUpdated,
+        isRealTime: !newPriceData.fallback
+      };
+    }
+  }
+}
+
 // 导出异步函数来获取股票数据
 const getStocks = getStocksWithRealTimePrices;
 
@@ -196,6 +223,7 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
 module.exports = {
   getStocks,
   generateOptionData,
+  refreshStockCache,
   // 为了向后兼容，保留stocks作为备用
   stocks: () => generateFallbackStocks()
 }; 

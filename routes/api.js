@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getStocks, generateOptionData } = require('../data/mock-data');
+const { getStocks, generateOptionData, refreshStockCache } = require('../data/mock-data');
 
 // 获取股票列表
 router.get('/stocks', async (req, res) => {
@@ -27,7 +27,15 @@ router.get('/stocks', async (req, res) => {
 router.get('/options/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const { type = 'call', days = 30 } = req.query;
+    const { type = 'call', days = 30, refresh = false } = req.query;
+    
+    // 如果需要刷新，先强制获取该股票的最新价格
+    if (refresh === 'true') {
+      console.log(`强制刷新 ${symbol} 的股票价格`);
+      await require('../services/alphavantage').refreshStockPrice(symbol);
+      // 同时更新mock-data的缓存
+      await refreshStockCache(symbol);
+    }
     
     // 获取最新的股票数据
     const stocks = await getStocks();
