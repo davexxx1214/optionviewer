@@ -1,0 +1,410 @@
+// 应用状态
+const appState = {
+    selectedStock: null,
+    selectedOptionType: 'call',
+    selectedExpiry: 30,
+    optionsData: [],
+    sortColumn: 'score',
+    sortDirection: 'desc'
+};
+
+// DOM 元素
+const elements = {
+    stockSelect: document.getElementById('stockSelect'),
+    stockDropdown: document.getElementById('stockDropdown'),
+    optionTypeDropdown: document.getElementById('optionTypeDropdown'),
+    expiryDropdown: document.getElementById('expiryDropdown'),
+    analyzeBtn: document.getElementById('analyzeBtn'),
+    loadingIndicator: document.getElementById('loadingIndicator'),
+    errorMessage: document.getElementById('errorMessage'),
+    resultsContainer: document.getElementById('resultsContainer'),
+    resultsTitle: document.getElementById('resultsTitle'),
+    stockInfo: document.getElementById('stockInfo'),
+    updateTime: document.getElementById('updateTime'),
+    optionsTableBody: document.getElementById('optionsTableBody')
+};
+
+// 初始化应用
+document.addEventListener('DOMContentLoaded', function() {
+    initializeApp();
+});
+
+function initializeApp() {
+    // 初始化时禁用分析按钮
+    elements.analyzeBtn.disabled = true;
+    
+    initializeDropdowns();
+    setupEventListeners();
+    loadStocksList();
+}
+
+// 设置事件监听器
+function setupEventListeners() {
+    // 股票选择器
+    setupDropdown('stock', appState.selectedStock?.symbol || '', handleStockChange);
+    
+    // 期权类型选择器
+    setupDropdown('optionType', appState.selectedOptionType, handleOptionTypeChange);
+    
+    // 到期天数选择器
+    setupDropdown('expiry', appState.selectedExpiry, handleExpiryChange);
+    
+    // 分析按钮
+    elements.analyzeBtn.addEventListener('click', analyzeOptions);
+    
+    // 表格排序
+    document.querySelectorAll('.options-table th.sortable').forEach(th => {
+        th.addEventListener('click', () => handleSort(th.dataset.sort));
+    });
+    
+    // 点击外部关闭下拉菜单
+    document.addEventListener('click', handleClickOutside);
+}
+
+// 初始化下拉菜单
+function initializeDropdowns() {
+    // 股票选择下拉菜单
+    const stockSelector = document.querySelector('.stock-selector');
+    const stockValue = document.createElement('div');
+    stockValue.className = 'selected-value';
+    stockValue.textContent = '请选择股票';
+    stockSelector.insertBefore(stockValue, elements.stockDropdown);
+    
+    // 期权类型下拉菜单
+    const optionTypeSelector = document.querySelector('.option-type-selector');
+    const optionTypeValue = document.createElement('div');
+    optionTypeValue.className = 'selected-value';
+    optionTypeValue.textContent = '买入看涨';
+    optionTypeSelector.insertBefore(optionTypeValue, elements.optionTypeDropdown);
+    
+    // 到期天数下拉菜单
+    const expirySelector = document.querySelector('.expiry-selector');
+    const expiryValue = document.createElement('div');
+    expiryValue.className = 'selected-value';
+    expiryValue.textContent = '30天';
+    expirySelector.insertBefore(expiryValue, elements.expiryDropdown);
+}
+
+// 设置下拉菜单
+function setupDropdown(type, defaultValue, changeHandler) {
+    let dropdownId;
+    if (type === 'optionType') {
+        dropdownId = 'optionTypeDropdown';
+    } else if (type === 'expiry') {
+        dropdownId = 'expiryDropdown';
+    } else if (type === 'stock') {
+        dropdownId = 'stockDropdown';
+    }
+    
+    const dropdown = document.getElementById(dropdownId);
+    const selectedValueElement = dropdown.parentElement.querySelector('.selected-value');
+    
+    if (!dropdown) {
+        console.error(`找不到ID为 ${dropdownId} 的下拉菜单元素`);
+        return;
+    }
+    
+    if (!selectedValueElement) {
+        console.error(`找不到 ${type} 的 selected-value 元素`);
+        return;
+    }
+    
+    // 绑定点击选中值的事件
+    selectedValueElement.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleDropdown(dropdown);
+    });
+    
+    // 绑定下拉选项的点击事件
+    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const value = item.dataset.value;
+            selectedValueElement.textContent = item.textContent;
+            hideDropdown(dropdown);
+            changeHandler(value);
+        });
+    });
+}
+
+// 股票选择处理
+function handleStockChange(value) {
+    const stocks = JSON.parse(localStorage.getItem('stocksList') || '[]');
+    const selectedStock = stocks.find(stock => stock.symbol === value);
+    
+    if (selectedStock) {
+        appState.selectedStock = selectedStock;
+        
+        // 启用分析按钮
+        elements.analyzeBtn.disabled = false;
+    } else {
+        appState.selectedStock = null;
+        elements.analyzeBtn.disabled = true;
+    }
+}
+
+// 加载股票列表
+async function loadStocksList() {
+    try {
+        const response = await fetch('/api/stocks');
+        const result = await response.json();
+        
+        if (result.success) {
+            // 保存股票列表到本地存储
+            localStorage.setItem('stocksList', JSON.stringify(result.data));
+            
+            // 生成股票下拉菜单选项
+            generateStockDropdownOptions(result.data);
+            
+            // 设置默认选择第一个股票
+            if (result.data.length > 0) {
+                selectStock(result.data[0]);
+            }
+        }
+    } catch (error) {
+        console.error('加载股票列表失败:', error);
+    }
+}
+
+// 生成股票下拉菜单选项
+function generateStockDropdownOptions(stocks) {
+    elements.stockDropdown.innerHTML = '';
+    
+    stocks.forEach(stock => {
+        const item = document.createElement('div');
+        item.className = 'dropdown-item';
+        item.dataset.value = stock.symbol;
+        item.innerHTML = `
+            <div style="font-weight: 600;">${stock.symbol}</div>
+            <div style="font-size: 12px; color: #888;">${stock.name}</div>
+        `;
+        elements.stockDropdown.appendChild(item);
+    });
+}
+
+// 选择股票
+function selectStock(stock) {
+    appState.selectedStock = stock;
+    
+    // 更新股票下拉框显示
+    const stockSelector = document.querySelector('.stock-selector');
+    const selectedValueElement = stockSelector.querySelector('.selected-value');
+    if (selectedValueElement) {
+        selectedValueElement.textContent = `${stock.symbol} - ${stock.name}`;
+    }
+    
+    // 启用分析按钮
+    elements.analyzeBtn.disabled = false;
+}
+
+// 期权类型变更处理
+function handleOptionTypeChange(value) {
+    appState.selectedOptionType = value;
+}
+
+// 到期天数变更处理
+function handleExpiryChange(value) {
+    appState.selectedExpiry = parseInt(value);
+}
+
+// 分析期权
+async function analyzeOptions() {
+    if (!appState.selectedStock) {
+        showError('请先选择股票');
+        return;
+    }
+    
+    showLoading();
+    hideError();
+    hideResults();
+    
+    try {
+        const optionType = appState.selectedOptionType.includes('call') ? 'call' : 'put';
+        const response = await fetch(
+            `/api/options/${appState.selectedStock.symbol}?type=${optionType}&days=${appState.selectedExpiry}`
+        );
+        const result = await response.json();
+        
+        if (result.success) {
+            appState.optionsData = result.data.options;
+            displayResults(result.data);
+        } else {
+            showError(result.message || '分析失败');
+        }
+    } catch (error) {
+        console.error('分析请求失败:', error);
+        showError('网络请求失败，请检查连接');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 显示结果
+function displayResults(data) {
+    // 更新标题和信息
+    elements.resultsTitle.textContent = `${data.stock.symbol} 期权分析结果`;
+    elements.stockInfo.textContent = `${data.stock.name} - 当前价格: $${data.stock.price}`;
+    elements.updateTime.textContent = `更新时间: ${new Date(data.timestamp).toLocaleString('zh-CN')}`;
+    
+    // 渲染表格
+    renderOptionsTable(appState.optionsData);
+    
+    // 显示结果容器
+    showResults();
+}
+
+// 渲染期权表格
+function renderOptionsTable(options) {
+    elements.optionsTableBody.innerHTML = '';
+    
+    options.forEach(option => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${option.symbol}</td>
+            <td>${option.daysToExpiry}</td>
+            <td>$${option.strikePrice}</td>
+            <td>$${option.premium}</td>
+            <td class="${getReturnClass(option.annualizedReturn)}">${option.annualizedReturn}%</td>
+            <td class="${getProbabilityClass(option.exerciseProbability)}">${option.exerciseProbability}%</td>
+            <td>${option.iv}%</td>
+            <td>${option.ivp}%</td>
+            <td>${option.hv}%</td>
+            <td class="${getRatioClass(option.ivHvRatio)}">${option.ivHvRatio}%</td>
+            <td>$${option.price}</td>
+            <td>${formatDate(option.earningsDate)}</td>
+            <td><span class="score ${getScoreClass(option.score)}">${option.score}</span></td>
+        `;
+        elements.optionsTableBody.appendChild(row);
+    });
+}
+
+// 排序处理
+function handleSort(column) {
+    if (appState.sortColumn === column) {
+        appState.sortDirection = appState.sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        appState.sortColumn = column;
+        appState.sortDirection = 'desc';
+    }
+    
+    // 更新排序图标
+    updateSortIcons();
+    
+    // 排序数据
+    sortOptionsData();
+    
+    // 重新渲染表格
+    renderOptionsTable(appState.optionsData);
+}
+
+// 排序数据
+function sortOptionsData() {
+    appState.optionsData.sort((a, b) => {
+        let aValue = a[appState.sortColumn];
+        let bValue = b[appState.sortColumn];
+        
+        // 处理数值类型
+        if (typeof aValue === 'string' && !isNaN(parseFloat(aValue))) {
+            aValue = parseFloat(aValue);
+            bValue = parseFloat(bValue);
+        }
+        
+        if (appState.sortDirection === 'asc') {
+            return aValue > bValue ? 1 : -1;
+        } else {
+            return aValue < bValue ? 1 : -1;
+        }
+    });
+}
+
+// 更新排序图标
+function updateSortIcons() {
+    document.querySelectorAll('.options-table th.sortable').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.sort === appState.sortColumn) {
+            th.classList.add(`sort-${appState.sortDirection}`);
+        }
+    });
+}
+
+// 工具函数
+function getReturnClass(value) {
+    if (value > 20) return 'positive';
+    if (value > 10) return 'neutral';
+    return 'negative';
+}
+
+function getProbabilityClass(value) {
+    if (value > 70) return 'positive';
+    if (value > 30) return 'neutral';
+    return 'negative';
+}
+
+function getRatioClass(value) {
+    if (value > 150) return 'negative';
+    if (value > 120) return 'neutral';
+    return 'positive';
+}
+
+function getScoreClass(score) {
+    if (score >= 80) return 'score-excellent';
+    if (score >= 60) return 'score-good';
+    if (score >= 40) return 'score-average';
+    return 'score-poor';
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('zh-CN');
+}
+
+// 显示/隐藏元素
+function showLoading() {
+    elements.loadingIndicator.style.display = 'flex';
+}
+
+function hideLoading() {
+    elements.loadingIndicator.style.display = 'none';
+}
+
+function showError(message) {
+    elements.errorMessage.textContent = message;
+    elements.errorMessage.style.display = 'block';
+}
+
+function hideError() {
+    elements.errorMessage.style.display = 'none';
+}
+
+function showResults() {
+    elements.resultsContainer.style.display = 'block';
+}
+
+function hideResults() {
+    elements.resultsContainer.style.display = 'none';
+}
+
+
+
+function toggleDropdown(dropdown) {
+    dropdown.classList.toggle('show');
+}
+
+function hideDropdown(dropdown) {
+    dropdown.classList.remove('show');
+}
+
+// 点击外部关闭下拉菜单
+function handleClickOutside(event) {
+    if (!event.target.closest('.stock-selector')) {
+        hideDropdown(elements.stockDropdown);
+    }
+    
+    if (!event.target.closest('.option-type-selector')) {
+        hideDropdown(elements.optionTypeDropdown);
+    }
+    
+    if (!event.target.closest('.expiry-selector')) {
+        hideDropdown(elements.expiryDropdown);
+    }
+} 
