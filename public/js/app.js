@@ -153,6 +153,9 @@ async function loadStocksList() {
             // 保存股票列表到本地存储
             localStorage.setItem('stocksList', JSON.stringify(result.data));
             
+            // 更新数据源指示器
+            updateDataSourceIndicator(result.dataSource, result.lastUpdated);
+            
             // 生成股票下拉菜单选项
             generateStockDropdownOptions(result.data);
             
@@ -163,6 +166,7 @@ async function loadStocksList() {
         }
     } catch (error) {
         console.error('加载股票列表失败:', error);
+        updateDataSourceIndicator('error');
     }
 }
 
@@ -392,6 +396,38 @@ function toggleDropdown(dropdown) {
 
 function hideDropdown(dropdown) {
     dropdown.classList.remove('show');
+}
+
+// 更新数据源指示器
+function updateDataSourceIndicator(dataSource, lastUpdated) {
+    const indicator = document.getElementById('dataSourceIndicator');
+    if (!indicator) return;
+    
+    // 移除所有样式类
+    indicator.classList.remove('real-time', 'fallback');
+    
+    switch (dataSource) {
+        case 'real-time':
+            indicator.textContent = '实时数据';
+            indicator.classList.add('real-time');
+            break;
+        case 'fallback':
+            indicator.textContent = '模拟数据';
+            indicator.classList.add('fallback');
+            break;
+        case 'error':
+            indicator.textContent = '数据加载失败';
+            indicator.classList.add('fallback');
+            break;
+        default:
+            indicator.textContent = '数据加载中...';
+    }
+    
+    // 更新时间提示
+    if (lastUpdated) {
+        const updateTime = new Date(lastUpdated);
+        indicator.title = `最后更新: ${updateTime.toLocaleString('zh-CN')}`;
+    }
 }
 
 // 点击外部关闭下拉菜单

@@ -1,9 +1,73 @@
-// 导入股票列表配置
+// 导入股票列表配置和AlphaVantage服务
 const { stocksList } = require('./stocks-config');
+const alphaVantageService = require('../services/alphavantage');
 
-// 动态生成股票价格的函数
-function generateStockPrice(symbol) {
-  // 为不同股票设置不同的价格范围，让价格看起来更真实
+// 缓存的股票数据
+let cachedStocks = null;
+let lastUpdateTime = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
+
+// 获取实时股票数据
+async function getStocksWithRealTimePrices() {
+  // 检查缓存是否有效
+  if (cachedStocks && lastUpdateTime && (Date.now() - lastUpdateTime < CACHE_DURATION)) {
+    console.log('使用缓存的股票数据');
+    return cachedStocks;
+  }
+
+  try {
+    console.log('获取实时股票价格数据...');
+    
+    // 提取股票代码
+    const symbols = stocksList.map(stock => stock.symbol);
+    
+    // 批量获取实时价格
+    const priceDataArray = await alphaVantageService.getBatchStockPrices(symbols);
+    
+    // 将价格数据与股票信息合并
+    const stocksWithPrices = stocksList.map(stock => {
+      const priceData = priceDataArray.find(p => p.symbol === stock.symbol);
+      return {
+        ...stock,
+        price: priceData ? priceData.price : generateFallbackPrice(stock.symbol),
+        open: priceData ? priceData.open : null,
+        high: priceData ? priceData.high : null,
+        low: priceData ? priceData.low : null,
+        volume: priceData ? priceData.volume : null,
+        timestamp: priceData ? priceData.timestamp : new Date().toISOString(),
+        lastUpdated: priceData ? priceData.lastUpdated : new Date().toISOString(),
+        isRealTime: priceData ? !priceData.fallback : false
+      };
+    });
+
+    // 更新缓存
+    cachedStocks = stocksWithPrices;
+    lastUpdateTime = Date.now();
+    
+    console.log(`成功获取 ${stocksWithPrices.length} 只股票的价格数据`);
+    return stocksWithPrices;
+    
+  } catch (error) {
+    console.error('获取实时股票价格失败:', error.message);
+    
+    // 如果获取实时数据失败，返回备选数据
+    return generateFallbackStocks();
+  }
+}
+
+// 生成备选股票数据（当API完全失败时使用）
+function generateFallbackStocks() {
+  console.log('使用备选股票数据');
+  return stocksList.map(stock => ({
+    ...stock,
+    price: generateFallbackPrice(stock.symbol),
+    isRealTime: false,
+    lastUpdated: new Date().toISOString()
+  }));
+}
+
+// 生成备选价格
+function generateFallbackPrice(symbol) {
   const priceRanges = {
     'NVDA': { min: 140, max: 180 },
     'AAPL': { min: 160, max: 190 },
@@ -27,14 +91,11 @@ function generateStockPrice(symbol) {
   
   const range = priceRanges[symbol] || { min: 50, max: 200 };
   const price = Math.random() * (range.max - range.min) + range.min;
-  return Math.round(price * 100) / 100; // 保留两位小数
+  return Math.round(price * 100) / 100;
 }
 
-// 为股票列表添加动态生成的价格
-const stocks = stocksList.map(stock => ({
-  ...stock,
-  price: generateStockPrice(stock.symbol)
-}));
+// 导出异步函数来获取股票数据
+const getStocks = getStocksWithRealTimePrices;
 
 // 期权数据生成函数
 function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
@@ -133,6 +194,8 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
 }
 
 module.exports = {
-  stocks,
-  generateOptionData
+  getStocks,
+  generateOptionData,
+  // 为了向后兼容，保留stocks作为备用
+  stocks: () => generateFallbackStocks()
 }; 

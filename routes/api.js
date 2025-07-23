@@ -1,13 +1,18 @@
 const express = require('express');
 const router = express.Router();
-const { stocks, generateOptionData } = require('../data/mock-data');
+const { getStocks, generateOptionData } = require('../data/mock-data');
 
 // 获取股票列表
-router.get('/stocks', (req, res) => {
+router.get('/stocks', async (req, res) => {
   try {
+    const stocks = await getStocks();
+    
     res.json({
       success: true,
-      data: stocks
+      data: stocks,
+      dataSource: stocks[0]?.isRealTime ? 'real-time' : 'fallback',
+      lastUpdated: stocks[0]?.lastUpdated || new Date().toISOString(),
+      updateInterval: '5分钟'
     });
   } catch (error) {
     res.status(500).json({
@@ -19,10 +24,13 @@ router.get('/stocks', (req, res) => {
 });
 
 // 获取期权数据
-router.get('/options/:symbol', (req, res) => {
+router.get('/options/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
     const { type = 'call', days = 30 } = req.query;
+    
+    // 获取最新的股票数据
+    const stocks = await getStocks();
     
     // 查找股票
     const stock = stocks.find(s => s.symbol.toLowerCase() === symbol.toLowerCase());
@@ -46,7 +54,9 @@ router.get('/options/:symbol', (req, res) => {
       data: {
         stock: stock,
         options: optionsData,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        dataSource: stock.isRealTime ? 'real-time' : 'fallback',
+        lastUpdated: stock.lastUpdated
       }
     });
   } catch (error) {
@@ -59,9 +69,11 @@ router.get('/options/:symbol', (req, res) => {
 });
 
 // 股票搜索
-router.get('/search', (req, res) => {
+router.get('/search', async (req, res) => {
   try {
     const { q } = req.query;
+    const stocks = await getStocks();
+    
     if (!q) {
       return res.json({
         success: true,

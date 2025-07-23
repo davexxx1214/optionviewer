@@ -257,6 +257,50 @@ select {
     box-shadow: 0 4px 12px rgba(238, 90, 82, 0.3);
 }
 
+/* 数据更新提示 */
+.data-update-notice {
+    background: linear-gradient(135deg, #4dabf7 0%, #339af0 100%);
+    color: #ffffff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    margin: 20px 0;
+    box-shadow: 0 4px 12px rgba(77, 171, 247, 0.3);
+}
+
+.notice-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.notice-icon {
+    font-size: 16px;
+}
+
+.notice-text {
+    flex: 1;
+}
+
+.data-source {
+    font-size: 12px;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 12px;
+    font-weight: 600;
+}
+
+.data-source.real-time {
+    background: rgba(81, 207, 102, 0.3);
+    color: #51cf66;
+}
+
+.data-source.fallback {
+    background: rgba(255, 212, 59, 0.3);
+    color: #ffd43b;
+}
+
 /* 结果容器 */
 .results-container {
     margin-top: 30px;
