@@ -127,8 +127,6 @@ class AlphaVantageService {
      */
     async refreshStockPrice(symbol) {
         try {
-            console.log(`强制刷新 ${symbol} 价格数据`);
-            
             // 清除该股票的缓存
             const cacheKey = `price_${symbol}`;
             this.cache.delete(cacheKey);
