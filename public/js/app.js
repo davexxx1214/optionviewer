@@ -115,15 +115,23 @@ function setupDropdown(type, defaultValue, changeHandler) {
         toggleDropdown(dropdown);
     });
     
-    // 绑定下拉选项的点击事件
-    dropdown.querySelectorAll('.dropdown-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.stopPropagation();
+    // 使用事件委托处理下拉选项的点击事件
+    dropdown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const item = e.target.closest('.dropdown-item');
+        if (item) {
             const value = item.dataset.value;
-            selectedValueElement.textContent = item.textContent;
+            // 对于股票选择，显示格式需要特殊处理
+            if (type === 'stock') {
+                const stockSymbol = item.querySelector('div:first-child').textContent;
+                const stockName = item.querySelector('div:last-child').textContent;
+                selectedValueElement.textContent = `${stockSymbol} - ${stockName}`;
+            } else {
+                selectedValueElement.textContent = item.textContent;
+            }
             hideDropdown(dropdown);
             changeHandler(value);
-        });
+        }
     });
 }
 
