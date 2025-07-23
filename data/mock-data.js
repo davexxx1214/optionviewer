@@ -95,12 +95,12 @@ function generateFallbackPrice(symbol) {
 }
 
 // 强制刷新特定股票的缓存数据
-async function refreshStockCache(symbol) {
+async function refreshStockCache(symbol, priceData = null) {
   if (cachedStocks) {
     console.log(`更新缓存中的 ${symbol} 数据`);
     
-    // 获取新的价格数据
-    const newPriceData = await alphaVantageService.getStockPrice(symbol, true);
+    // 如果已提供数据则使用，否则获取新的价格数据
+    const newPriceData = priceData || await alphaVantageService.getStockPrice(symbol, true);
     
     // 找到并更新缓存中的股票数据
     const stockIndex = cachedStocks.findIndex(stock => stock.symbol === symbol);

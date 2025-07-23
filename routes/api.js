@@ -32,9 +32,9 @@ router.get('/options/:symbol', async (req, res) => {
     // 如果需要刷新，先强制获取该股票的最新价格
     if (refresh === 'true') {
       console.log(`强制刷新 ${symbol} 的股票价格`);
-      await require('../services/alphavantage').refreshStockPrice(symbol);
-      // 同时更新mock-data的缓存
-      await refreshStockCache(symbol);
+      const refreshedData = await require('../services/alphavantage').refreshStockPrice(symbol);
+      // 使用获取到的数据更新mock-data的缓存，避免重复API调用
+      await refreshStockCache(symbol, refreshedData);
     }
     
     // 获取最新的股票数据
