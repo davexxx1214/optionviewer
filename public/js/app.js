@@ -137,44 +137,97 @@ function setupDropdown(type, defaultValue, changeHandler) {
 
 // 股票选择处理
 function handleStockChange(value) {
-    const stocks = JSON.parse(localStorage.getItem('stocksList') || '[]');
-    const selectedStock = stocks.find(stock => stock.symbol === value);
+    // 优先从localStorage获取完整股票信息（包含价格）
+    let stocks = JSON.parse(localStorage.getItem('stocksList') || '[]');
+    let selectedStock = stocks.find(stock => stock.symbol === value);
+    
+    // 如果localStorage中没有找到（可能价格还未加载），从当前下拉菜单数据创建基础信息
+    if (!selectedStock) {
+        // 从下拉菜单中获取股票名称
+        const dropdownItem = document.querySelector(`[data-value="${value}"]`);
+        if (dropdownItem) {
+            const symbolElement = dropdownItem.querySelector('div:first-child');
+            const nameElement = dropdownItem.querySelector('div:last-child');
+            selectedStock = {
+                symbol: value,
+                name: nameElement ? nameElement.textContent : value,
+                price: null, // 价格稍后更新
+                lastUpdated: new Date().toISOString()
+            };
+        }
+    }
     
     if (selectedStock) {
         appState.selectedStock = selectedStock;
         
-        // 启用分析按钮
+        // 立即启用分析按钮，不需要等待价格加载
         elements.analyzeBtn.disabled = false;
+        console.log(`已选择股票: ${selectedStock.symbol} - ${selectedStock.name}`);
     } else {
         appState.selectedStock = null;
         elements.analyzeBtn.disabled = true;
     }
 }
 
-// 加载股票列表
+// 加载股票列表（优化版本：立即显示基础列表，后台加载价格）
 async function loadStocksList() {
+    try {
+        // 第一步：快速加载基础股票列表，立即显示选择器
+        console.log('正在加载基础股票列表...');
+        const basicResponse = await fetch('/api/stocks/list');
+        const basicResult = await basicResponse.json();
+        
+        if (basicResult.success) {
+            // 立即生成股票下拉菜单选项
+            generateStockDropdownOptions(basicResult.data);
+            
+            // 设置默认选择第一个股票
+            if (basicResult.data.length > 0) {
+                selectStock(basicResult.data[0]);
+            }
+            
+            // 显示加载状态
+            updateDataSourceIndicator('loading');
+            console.log('基础股票列表已加载，用户可以立即选择股票');
+        }
+        
+        // 第二步：在后台异步加载实时价格
+        console.log('正在后台获取实时股票价格...');
+        loadStockPricesInBackground();
+        
+    } catch (error) {
+        console.error('加载基础股票列表失败:', error);
+        updateDataSourceIndicator('error');
+    }
+}
+
+// 后台加载股票价格
+async function loadStockPricesInBackground() {
     try {
         const response = await fetch('/api/stocks');
         const result = await response.json();
         
         if (result.success) {
-            // 保存股票列表到本地存储
+            // 保存完整的股票列表到本地存储
             localStorage.setItem('stocksList', JSON.stringify(result.data));
             
             // 更新数据源指示器
             updateDataSourceIndicator(result.dataSource, result.lastUpdated);
             
-            // 生成股票下拉菜单选项
-            generateStockDropdownOptions(result.data);
-            
-            // 设置默认选择第一个股票
-            if (result.data.length > 0) {
-                selectStock(result.data[0]);
+            // 更新当前选中股票的价格信息（如果有的话）
+            if (appState.selectedStock) {
+                const updatedStock = result.data.find(s => s.symbol === appState.selectedStock.symbol);
+                if (updatedStock) {
+                    appState.selectedStock = updatedStock;
+                }
             }
+            
+            console.log('股票价格更新完成');
         }
     } catch (error) {
-        console.error('加载股票列表失败:', error);
-        updateDataSourceIndicator('error');
+        console.error('获取股票价格失败:', error);
+        // 即使价格获取失败，用户仍然可以选择股票
+        updateDataSourceIndicator('fallback');
     }
 }
 
@@ -393,7 +446,7 @@ function updateDataSourceIndicator(dataSource, lastUpdated) {
     if (!indicator) return;
     
     // 移除所有样式类
-    indicator.classList.remove('real-time', 'fallback');
+    indicator.classList.remove('real-time', 'fallback', 'loading');
     
     switch (dataSource) {
         case 'real-time':
@@ -403,6 +456,10 @@ function updateDataSourceIndicator(dataSource, lastUpdated) {
         case 'fallback':
             indicator.textContent = '模拟数据';
             indicator.classList.add('fallback');
+            break;
+        case 'loading':
+            indicator.textContent = '正在加载价格...';
+            indicator.classList.add('loading');
             break;
         case 'error':
             indicator.textContent = '数据加载失败';
@@ -416,6 +473,8 @@ function updateDataSourceIndicator(dataSource, lastUpdated) {
     if (lastUpdated) {
         const updateTime = new Date(lastUpdated);
         indicator.title = `最后更新: ${updateTime.toLocaleString('zh-CN')}`;
+    } else if (dataSource === 'loading') {
+        indicator.title = '正在后台获取最新股票价格';
     }
 }
 

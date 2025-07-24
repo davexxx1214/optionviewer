@@ -69,24 +69,33 @@ function generateFallbackStocks() {
 // 生成备选价格
 function generateFallbackPrice(symbol) {
   const priceRanges = {
+    // 美股市值前20名价格范围
     'NVDA': { min: 140, max: 180 },
-    'AAPL': { min: 160, max: 190 },
     'MSFT': { min: 320, max: 380 },
-    'GOOGL': { min: 120, max: 150 },
-    'TSLA': { min: 200, max: 280 },
+    'AAPL': { min: 160, max: 190 },
     'AMZN': { min: 140, max: 170 },
+    'GOOGL': { min: 120, max: 150 },
     'META': { min: 280, max: 320 },
-    'AMD': { min: 120, max: 160 },
-    'NFLX': { min: 380, max: 450 },
-    'CRM': { min: 200, max: 250 },
+    'AVGO': { min: 1200, max: 1400 },
+    'TSLA': { min: 200, max: 280 },
+    'BRK-B': { min: 400, max: 450 },
+    'JPM': { min: 220, max: 260 },
+    'WMT': { min: 80, max: 100 },
+    'LLY': { min: 700, max: 850 },
+    'V': { min: 270, max: 320 },
     'ORCL': { min: 100, max: 130 },
-    'INTC': { min: 20, max: 35 },
-    'PYPL': { min: 50, max: 80 },
-    'ADBE': { min: 450, max: 550 },
-    'CSCO': { min: 45, max: 55 },
-    'PEP': { min: 160, max: 180 },
-    'CMCSA': { min: 35, max: 45 },
-    'COST': { min: 650, max: 750 }
+    'MA': { min: 450, max: 520 },
+    'NFLX': { min: 380, max: 450 },
+    'XOM': { min: 110, max: 130 },
+    'COST': { min: 650, max: 750 },
+    'JNJ': { min: 150, max: 180 },
+    'HD': { min: 350, max: 420 },
+    // 中概股价格范围
+    'BABA': { min: 80, max: 120 },
+    'PDD': { min: 120, max: 160 },
+    'NTES': { min: 90, max: 120 },
+    'JD': { min: 35, max: 50 },
+    'TME': { min: 8, max: 15 }
   };
   
   const range = priceRanges[symbol] || { min: 50, max: 200 };

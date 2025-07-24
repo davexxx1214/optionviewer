@@ -1,8 +1,27 @@
 const express = require('express');
 const router = express.Router();
 const { getStocks, getOptionsData, generateOptionData, refreshStockCache } = require('../data/mock-data');
+const { stocksList } = require('../data/stocks-config');
 
-// 获取股票列表
+// 获取基础股票列表（快速响应，不包含价格）
+router.get('/stocks/list', (req, res) => {
+  try {
+    res.json({
+      success: true,
+      data: stocksList,
+      dataSource: 'config',
+      message: '基础股票列表加载完成'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: '获取股票列表失败',
+      error: error.message
+    });
+  }
+});
+
+// 获取股票列表（包含实时价格）
 router.get('/stocks', async (req, res) => {
   try {
     const stocks = await getStocks();
