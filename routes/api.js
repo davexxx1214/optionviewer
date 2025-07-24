@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { getStocks, generateOptionData, refreshStockCache } = require('../data/mock-data');
+const { getStocks, getOptionsData, generateOptionData, refreshStockCache } = require('../data/mock-data');
 
 // 获取股票列表
 router.get('/stocks', async (req, res) => {
@@ -49,13 +49,16 @@ router.get('/options/:symbol', async (req, res) => {
       });
     }
     
-    // 生成期权数据
-    const optionsData = generateOptionData(
+    // 获取期权数据（优先使用真实数据）
+    const optionsData = await getOptionsData(
       stock.symbol, 
       stock.price, 
       type.toLowerCase(), 
       parseInt(days)
     );
+    
+    // 判断数据源
+    const dataSource = optionsData.length > 0 && optionsData[0].dataSource === 'real-time' ? 'real-time' : 'fallback';
     
     res.json({
       success: true,
@@ -63,7 +66,7 @@ router.get('/options/:symbol', async (req, res) => {
         stock: stock,
         options: optionsData,
         timestamp: new Date().toISOString(),
-        dataSource: stock.isRealTime ? 'real-time' : 'fallback',
+        dataSource: dataSource,
         lastUpdated: stock.lastUpdated
       }
     });

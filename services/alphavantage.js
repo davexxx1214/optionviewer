@@ -186,6 +186,137 @@ class AlphaVantageService {
     }
 
     /**
+     * 获取期权数据
+     * @param {string} symbol - 股票代码
+     * @param {boolean} forceRefresh - 是否强制刷新缓存
+     * @returns {Promise<Object>} 期权数据
+     */
+    async getOptionsData(symbol, forceRefresh = false) {
+        const cacheKey = `options_${symbol}`;
+        
+        if (!forceRefresh) {
+            const cachedData = this.getCachedData(cacheKey);
+            if (cachedData) {
+                console.log(`从缓存获取 ${symbol} 期权数据`);
+                return cachedData;
+            }
+        } else {
+            console.log(`强制刷新 ${symbol} 期权数据`);
+        }
+
+        try {
+            console.log(`从API获取 ${symbol} 期权数据`);
+            const url = `${this.baseUrl}/query`;
+            const params = {
+                function: 'HISTORICAL_OPTIONS',
+                symbol: symbol,
+                datatype: 'json',
+                apikey: this.apiKey
+            };
+
+            const response = await axios.get(url, {
+                params,
+                timeout: this.timeout
+            });
+
+            const data = response.data;
+
+            // 检查是否有错误
+            if (data['Error Message']) {
+                throw new Error(`AlphaVantage API错误: ${data['Error Message']}`);
+            }
+
+            if (data['Note']) {
+                throw new Error(`AlphaVantage API限制: ${data['Note']}`);
+            }
+
+            // 检查数据格式
+            if (!data.data || !Array.isArray(data.data)) {
+                throw new Error(`期权数据格式不正确`);
+            }
+
+            // 处理期权数据
+            const processedData = this.processOptionsData(data.data);
+
+            // 缓存数据
+            this.setCachedData(cacheKey, processedData);
+            
+            return processedData;
+
+        } catch (error) {
+            console.error(`获取 ${symbol} 期权数据失败:`, error.message);
+            
+            // 如果API失败，返回空数组，让调用方决定是否使用备选数据
+            throw error;
+        }
+    }
+
+    /**
+     * 处理原始期权数据，转换为系统需要的格式
+     * @param {Array} rawData - 原始API数据
+     * @returns {Array} 处理后的期权数据
+     */
+    processOptionsData(rawData) {
+        return rawData.map(option => {
+            // 计算到期天数
+            const expirationDate = new Date(option.expiration);
+            const currentDate = new Date();
+            const daysToExpiry = Math.ceil((expirationDate - currentDate) / (1000 * 60 * 60 * 24));
+
+            return {
+                contractID: option.contractID,
+                symbol: option.symbol,
+                expiration: option.expiration,
+                daysToExpiry: daysToExpiry,
+                strikePrice: parseFloat(option.strike),
+                premium: parseFloat(option.mark), // 使用mark价格作为权利金
+                type: option.type, // 'call' 或 'put'
+                bid: parseFloat(option.bid),
+                ask: parseFloat(option.ask),
+                bidSize: parseInt(option.bid_size) || 0,
+                askSize: parseInt(option.ask_size) || 0,
+                volume: parseInt(option.volume) || 0,
+                openInterest: parseInt(option.open_interest) || 0,
+                impliedVolatility: parseFloat(option.implied_volatility),
+                delta: parseFloat(option.delta),
+                gamma: parseFloat(option.gamma),
+                theta: parseFloat(option.theta),
+                vega: parseFloat(option.vega),
+                rho: parseFloat(option.rho),
+                lastPrice: parseFloat(option.last) || 0,
+                date: option.date,
+                score: null // 评分留空，后续计算
+            };
+        });
+    }
+
+    /**
+     * 根据条件筛选期权数据
+     * @param {Array} optionsData - 期权数据数组
+     * @param {string} type - 期权类型 ('call' 或 'put')
+     * @param {number} maxDays - 最大到期天数
+     * @returns {Array} 筛选后的期权数据
+     */
+    filterOptionsData(optionsData, type = null, maxDays = null) {
+        let filtered = [...optionsData];
+
+        // 按期权类型筛选
+        if (type) {
+            filtered = filtered.filter(option => option.type.toLowerCase() === type.toLowerCase());
+        }
+
+        // 按到期天数筛选
+        if (maxDays) {
+            filtered = filtered.filter(option => option.daysToExpiry <= maxDays);
+        }
+
+        // 按流动性筛选（移除无报价的期权）
+        filtered = filtered.filter(option => option.bid > 0 || option.ask > 0);
+
+        return filtered;
+    }
+
+    /**
      * 缓存数据
      * @param {string} key 
      * @param {Object} data 

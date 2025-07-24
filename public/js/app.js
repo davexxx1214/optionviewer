@@ -276,15 +276,13 @@ function renderOptionsTable(options) {
             <td>${option.daysToExpiry}</td>
             <td>$${option.strikePrice}</td>
             <td>$${option.premium}</td>
-            <td class="${getReturnClass(option.annualizedReturn)}">${option.annualizedReturn}%</td>
-            <td class="${getProbabilityClass(option.exerciseProbability)}">${option.exerciseProbability}%</td>
-            <td>${option.iv}%</td>
-            <td>${option.ivp}%</td>
-            <td>${option.hv}%</td>
-            <td class="${getRatioClass(option.ivHvRatio)}">${option.ivHvRatio}%</td>
-            <td>$${option.price}</td>
-            <td>${formatDate(option.earningsDate)}</td>
-            <td><span class="score ${getScoreClass(option.score)}">${option.score}</span></td>
+            <td class="option-type ${option.type === 'call' ? 'call-option' : 'put-option'}">${option.type.toUpperCase()}</td>
+            <td>$${option.bid}</td>
+            <td>$${option.ask}</td>
+            <td>${option.volume || 0}</td>
+            <td>${option.openInterest || 0}</td>
+            <td>${option.impliedVolatility}%</td>
+            <td><span class="score ${getScoreClass(option.score)}">${option.score || '-'}</span></td>
         `;
         elements.optionsTableBody.appendChild(row);
     });
@@ -340,23 +338,6 @@ function updateSortIcons() {
 }
 
 // 工具函数
-function getReturnClass(value) {
-    if (value > 20) return 'positive';
-    if (value > 10) return 'neutral';
-    return 'negative';
-}
-
-function getProbabilityClass(value) {
-    if (value > 70) return 'positive';
-    if (value > 30) return 'neutral';
-    return 'negative';
-}
-
-function getRatioClass(value) {
-    if (value > 150) return 'negative';
-    if (value > 120) return 'neutral';
-    return 'positive';
-}
 
 function getScoreClass(score) {
     if (score >= 80) return 'score-excellent';

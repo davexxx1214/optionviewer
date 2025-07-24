@@ -124,6 +124,79 @@ async function refreshStockCache(symbol, priceData = null) {
 // 导出异步函数来获取股票数据
 const getStocks = getStocksWithRealTimePrices;
 
+// 获取真实期权数据
+async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null) {
+  try {
+    console.log(`获取 ${symbol} 的真实期权数据...`);
+    
+    // 调用 AlphaVantage API 获取期权数据
+    const optionsData = await alphaVantageService.getOptionsData(symbol, true);
+    
+    // 筛选期权数据
+    const filteredOptions = alphaVantageService.filterOptionsData(
+      optionsData, 
+      optionType, 
+      daysToExpiry
+    );
+    
+    // 转换为前端需要的格式
+    const formattedOptions = filteredOptions.map(option => ({
+      symbol: option.symbol,
+      contractID: option.contractID,
+      daysToExpiry: option.daysToExpiry,
+      strikePrice: option.strikePrice,
+      premium: option.premium,
+      type: option.type,
+      bid: option.bid,
+      ask: option.ask,
+      volume: option.volume,
+      openInterest: option.openInterest,
+      impliedVolatility: (option.impliedVolatility * 100).toFixed(2), // 转换为百分比
+      delta: option.delta,
+      gamma: option.gamma,
+      theta: option.theta,
+      vega: option.vega,
+      rho: option.rho,
+      lastPrice: option.lastPrice,
+      expiration: option.expiration,
+      score: null, // 评分留空
+      dataSource: 'real-time'
+    }));
+
+    console.log(`成功获取 ${formattedOptions.length} 个期权合约数据`);
+    return formattedOptions;
+    
+  } catch (error) {
+    console.error(`获取 ${symbol} 真实期权数据失败:`, error.message);
+    throw error;
+  }
+}
+
+// 期权数据获取函数（优先使用真实数据，失败时使用模拟数据）
+async function getOptionsData(symbol, stockPrice, optionType, daysToExpiry) {
+  try {
+    // 首先尝试获取真实期权数据
+    const realOptions = await getRealOptionsData(symbol, optionType, daysToExpiry);
+    
+    if (realOptions.length > 0) {
+      console.log(`使用 ${symbol} 的真实期权数据`);
+      return realOptions;
+    }
+  } catch (error) {
+    console.log(`真实期权数据获取失败，使用模拟数据: ${error.message}`);
+  }
+  
+  // 如果真实数据获取失败或没有数据，使用原有的模拟数据
+  console.log(`使用 ${symbol} 的模拟期权数据`);
+  const mockOptions = generateOptionData(symbol, stockPrice, optionType, daysToExpiry);
+  
+  // 为模拟数据添加数据源标识
+  return mockOptions.map(option => ({
+    ...option,
+    dataSource: 'fallback'
+  }));
+}
+
 // 期权数据生成函数
 function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
   const options = [];
@@ -222,6 +295,7 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
 
 module.exports = {
   getStocks,
+  getOptionsData,
   generateOptionData,
   refreshStockCache,
   // 为了向后兼容，保留stocks作为备用

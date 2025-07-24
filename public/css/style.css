@@ -479,3 +479,40 @@ select {
         min-width: 1000px;
     }
 } 
+
+/* 期权类型样式 */
+.option-type {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 12px;
+    text-align: center;
+}
+
+.call-option {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.put-option {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+    border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+/* 数值列对齐 */
+.options-table td:nth-child(3),
+.options-table td:nth-child(4),
+.options-table td:nth-child(6),
+.options-table td:nth-child(7),
+.options-table td:nth-child(8),
+.options-table td:nth-child(9),
+.options-table td:nth-child(10) {
+    text-align: right;
+}
+
+/* 期权类型列居中 */
+.options-table td:nth-child(5) {
+    text-align: center;
+} 
