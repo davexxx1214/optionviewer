@@ -169,7 +169,7 @@ async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null
         impliedVolatility: (option.impliedVolatility * 100).toFixed(2), // 转换为百分比
         historicalVolatility: option.historicalVolatility ? option.historicalVolatility.toFixed(2) : null, // HV
         hvPeriod: option.hvPeriod, // HV计算周期
-        ivHvRatio: option.historicalVolatility ? ((option.impliedVolatility * 100) / option.historicalVolatility).toFixed(2) : null, // IV/HV比率
+                 ivHvRatio: option.historicalVolatility ? (option.impliedVolatility / (option.historicalVolatility / 100)).toFixed(2) : null, // IV/HV比率
         delta: option.delta,
         gamma: option.gamma,
         theta: option.theta,
@@ -368,7 +368,7 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
       historicalVolatility: hv.toFixed(2), // HV百分比格式
       hvPeriod: hvPeriod, // HV计算周期
       ivp: Math.round(ivp * 100) / 100,
-      ivHvRatio: (ivHvRatio * 100).toFixed(2), // IV/HV比率百分比
+             ivHvRatio: ivHvRatio.toFixed(2), // IV/HV比率
       price: Math.round(premium * 100) / 100,
       earningsDate: earningsDate.toISOString().split('T')[0],
       score: Math.round(score * 100) / 100,
