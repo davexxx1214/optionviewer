@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getStocks, getOptionsData, generateOptionData, refreshStockCache } = require('../data/mock-data');
 const { stocksList } = require('../data/stocks-config');
+const { getFilterConfig } = require('../config/filters');
 
 // 获取基础股票列表（快速响应，不包含价格）
 router.get('/stocks/list', (req, res) => {
@@ -86,7 +87,8 @@ router.get('/options/:symbol', async (req, res) => {
         options: optionsData,
         timestamp: new Date().toISOString(),
         dataSource: dataSource,
-        lastUpdated: stock.lastUpdated
+        lastUpdated: stock.lastUpdated,
+        filterConfig: getFilterConfig() // 添加过滤配置信息
       }
     });
   } catch (error) {

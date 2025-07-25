@@ -292,6 +292,14 @@ async function analyzeOptions() {
         
         if (result.success) {
             appState.optionsData = result.data.options;
+            
+            // 存储过滤配置到localStorage以便前端使用
+            localStorage.setItem('minDailyVolume', result.data.filterConfig?.minDailyVolume || '10');
+            localStorage.setItem('minOpenInterest', result.data.filterConfig?.minOpenInterest || '100');
+            localStorage.setItem('maxBidAskSpread', result.data.filterConfig?.maxBidAskSpreadPercent || '10');
+            localStorage.setItem('minImpliedVolatility', result.data.filterConfig?.minImpliedVolatilityPercent || '15');
+            localStorage.setItem('maxImpliedVolatility', result.data.filterConfig?.maxImpliedVolatilityPercent || '200');
+            
             displayResults(result.data);
         } else {
             showError(result.message || '分析失败');
@@ -306,9 +314,13 @@ async function analyzeOptions() {
 
 // 显示结果
 function displayResults(data) {
+    // 统计合格和不合格期权数量
+    const qualifiedCount = data.options.filter(option => option.isQualified).length;
+    const totalCount = data.options.length;
+    
     // 更新标题和信息
     elements.resultsTitle.textContent = `${data.stock.symbol} 期权分析结果`;
-    elements.stockInfo.textContent = `${data.stock.name} - 当前价格: $${data.stock.price}`;
+    elements.stockInfo.textContent = `${data.stock.name} - 当前价格: $${data.stock.price} | 合格期权: ${qualifiedCount}/${totalCount}`;
     elements.updateTime.textContent = `更新时间: ${new Date(data.timestamp).toLocaleString('zh-CN')}`;
     
     // 渲染表格
@@ -324,20 +336,27 @@ function renderOptionsTable(options) {
     
     options.forEach(option => {
         const row = document.createElement('tr');
+        
+        // 为不合格期权添加特殊样式
+        if (!option.isQualified) {
+            row.classList.add('unqualified-option');
+        }
+        
         row.innerHTML = `
             <td>${option.symbol}</td>
+            <td class="filter-status ${option.isQualified ? 'qualified' : 'unqualified'}" title="${getFilterTooltip(option.filters)}">${option.filterStatus || '合格期权'}</td>
             <td>${option.daysToExpiry}</td>
             <td>$${option.strikePrice}</td>
             <td>$${option.premium}</td>
             <td class="option-type ${option.type === 'call' ? 'call-option' : 'put-option'}">${option.type.toUpperCase()}</td>
             <td>$${option.bid}</td>
             <td>$${option.ask}</td>
-            <td>${option.volume || 0}</td>
-            <td>${option.openInterest || 0}</td>
-            <td>${option.impliedVolatility}%</td>
+            <td class="${getVolumeClass(option.volume)}">${option.volume || 0}</td>
+            <td class="${getOpenInterestClass(option.openInterest)}">${option.openInterest || 0}</td>
+            <td class="${getIVClass(option.impliedVolatility)}">${option.impliedVolatility}%</td>
             <td class="hv-value" title="基于${option.hvPeriod || ''}天计算">${option.historicalVolatility || '-'}${option.historicalVolatility ? '%' : ''}</td>
             <td class="iv-hv-ratio ${getIVHVRatioClass(option.ivHvRatio)}">${option.ivHvRatio || '-'}${option.ivHvRatio ? '%' : ''}</td>
-            <td><span class="score ${getScoreClass(option.score)}">${option.score || '-'}</span></td>
+            <td><span class="score ${getScoreClass(option.score)}">${option.score || 0}</span></td>
         `;
         elements.optionsTableBody.appendChild(row);
     });
@@ -501,4 +520,43 @@ function handleClickOutside(event) {
     if (!event.target.closest('.expiry-selector')) {
         hideDropdown(elements.expiryDropdown);
     }
+} 
+
+// 获取成交量样式类
+function getVolumeClass(volume) {
+    const minVolume = parseInt(localStorage.getItem('minDailyVolume')) || 10;
+    return volume > minVolume ? 'volume-good' : 'volume-low';
+}
+
+// 获取未平仓样式类
+function getOpenInterestClass(openInterest) {
+    const minOpenInterest = parseInt(localStorage.getItem('minOpenInterest')) || 100;
+    return openInterest > minOpenInterest ? 'open-interest-good' : 'open-interest-low';
+}
+
+// 获取IV样式类
+function getIVClass(iv) {
+    const ivValue = parseFloat(iv);
+    const minIV = parseInt(localStorage.getItem('minImpliedVolatility')) || 15;
+    const maxIV = parseInt(localStorage.getItem('maxImpliedVolatility')) || 200;
+    
+    if (ivValue < minIV || ivValue > maxIV) {
+        return 'iv-abnormal';
+    }
+    return 'iv-normal';
+}
+
+// 获取过滤器提示信息
+function getFilterTooltip(filters) {
+    if (!filters) return '筛选信息不可用';
+    
+    const minVolume = parseInt(localStorage.getItem('minDailyVolume')) || 10;
+    const minOpenInterest = parseInt(localStorage.getItem('minOpenInterest')) || 100;
+    const maxSpread = parseInt(localStorage.getItem('maxBidAskSpread')) || 10;
+    const minIV = parseInt(localStorage.getItem('minImpliedVolatility')) || 15;
+    const maxIV = parseInt(localStorage.getItem('maxImpliedVolatility')) || 200;
+    
+    return `流动性过滤: ${filters.liquidity ? '✓' : '✗'} (成交量>${minVolume}, 未平仓>${minOpenInterest})
+价差过滤: ${filters.bidAskSpread ? '✓' : '✗'} (相对价差<${maxSpread}%)
+IV合理性: ${filters.ivSanity ? '✓' : '✗'} (${minIV}%<IV<${maxIV}%)`;
 } 

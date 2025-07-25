@@ -19,8 +19,64 @@ body {
     padding: 20px;
 }
 
-/* 头部控制面板 */
-.header-controls {
+/* 标题区域 */
+.header {
+    text-align: center;
+    margin-bottom: 40px;
+    padding: 30px 20px;
+    background: linear-gradient(135deg, #2d2d2d 0%, #3d3d3d 100%);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.header h1 {
+    font-size: 36px;
+    font-weight: 700;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, #4dabf7 0%, #339af0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.subtitle {
+    font-size: 16px;
+    color: #cccccc;
+    margin-bottom: 20px;
+}
+
+/* 数据源指示器 */
+.data-source-indicator {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.data-source-indicator.real-time {
+    background: rgba(81, 207, 102, 0.2);
+    color: #51cf66;
+    border-color: rgba(81, 207, 102, 0.3);
+}
+
+.data-source-indicator.fallback {
+    background: rgba(255, 212, 59, 0.2);
+    color: #ffd43b;
+    border-color: rgba(255, 212, 59, 0.3);
+}
+
+.data-source-indicator.loading {
+    background: rgba(77, 171, 247, 0.2);
+    color: #4dabf7;
+    border-color: rgba(77, 171, 247, 0.3);
+    animation: pulse 2s infinite;
+}
+
+/* 控制面板 */
+.control-panel {
     display: flex;
     align-items: center;
     gap: 20px;
@@ -31,32 +87,26 @@ body {
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-.control-group {
+.input-group {
     display: flex;
     flex-direction: column;
     min-width: 200px;
-    position: relative;
 }
 
-.control-label {
+.input-group label {
     font-size: 14px;
     font-weight: 500;
     margin-bottom: 8px;
     color: #cccccc;
 }
 
-.required {
-    color: #ff4757;
-    margin-right: 4px;
-}
-
-/* 股票选择器 */
-.stock-selector {
+/* 选择器样式 */
+.selector-wrapper {
     position: relative;
     cursor: pointer;
 }
 
-.stock-selector::before {
+.selector-wrapper::before {
     content: '';
     position: absolute;
     right: 12px;
@@ -68,9 +118,10 @@ body {
     border-right: 5px solid transparent;
     border-top: 5px solid #888888;
     pointer-events: none;
+    z-index: 2;
 }
 
-.stock-selector .selected-value {
+.selected-value {
     width: 100%;
     padding: 12px 16px;
     background: #404040;
@@ -82,7 +133,7 @@ body {
     transition: all 0.3s ease;
 }
 
-.stock-selector .selected-value:hover {
+.selected-value:hover {
     border-color: #4dabf7;
 }
 
@@ -107,7 +158,7 @@ body {
 }
 
 .dropdown-item {
-    padding: 8px 16px;
+    padding: 12px 16px;
     cursor: pointer;
     transition: all 0.2s ease;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -126,54 +177,6 @@ body {
 .dropdown-item.selected {
     background: #4dabf7;
     color: #ffffff;
-}
-
-/* 选择器样式 */
-select {
-    display: none;
-}
-
-#stockSelect {
-    display: none;
-}
-
-.option-type-selector,
-.expiry-selector {
-    position: relative;
-    cursor: pointer;
-}
-
-.option-type-selector::before,
-.expiry-selector::before {
-    content: '';
-    position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 0;
-    height: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-top: 5px solid #888888;
-    pointer-events: none;
-}
-
-.option-type-selector .selected-value,
-.expiry-selector .selected-value {
-    width: 100%;
-    padding: 12px 16px;
-    background: #404040;
-    border: 2px solid #505050;
-    border-radius: 8px;
-    color: #ffffff;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.option-type-selector .selected-value:hover,
-.expiry-selector .selected-value:hover {
-    border-color: #4dabf7;
 }
 
 /* 分析按钮 */
@@ -195,7 +198,7 @@ select {
     justify-content: center;
 }
 
-.analyze-btn:hover {
+.analyze-btn:hover:not(:disabled) {
     background: linear-gradient(135deg, #339af0 0%, #228be6 100%);
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(52, 152, 219, 0.3);
@@ -210,15 +213,12 @@ select {
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
+    opacity: 0.6;
 }
 
-.btn-icon {
-    font-size: 18px;
-}
-
-/* 加载状态 */
-.loading {
-    display: flex;
+/* 加载指示器 */
+.loading-indicator {
+    display: none;
     flex-direction: column;
     align-items: center;
     justify-content: center;
@@ -226,7 +226,7 @@ select {
     color: #cccccc;
 }
 
-.loading-spinner {
+.spinner {
     width: 40px;
     height: 40px;
     border: 4px solid #404040;
@@ -241,13 +241,15 @@ select {
     100% { transform: rotate(360deg); }
 }
 
-.loading-text {
-    font-size: 16px;
-    font-weight: 500;
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.6; }
+    100% { opacity: 1; }
 }
 
 /* 错误消息 */
 .error-message {
+    display: none;
     background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
     color: #ffffff;
     padding: 16px 20px;
@@ -257,52 +259,9 @@ select {
     box-shadow: 0 4px 12px rgba(238, 90, 82, 0.3);
 }
 
-/* 数据更新提示 */
-.data-update-notice {
-    background: linear-gradient(135deg, #4dabf7 0%, #339af0 100%);
-    color: #ffffff;
-    padding: 12px 20px;
-    border-radius: 8px;
-    margin: 20px 0;
-    box-shadow: 0 4px 12px rgba(77, 171, 247, 0.3);
-}
-
-.notice-content {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 500;
-}
-
-.notice-icon {
-    font-size: 16px;
-}
-
-.notice-text {
-    flex: 1;
-}
-
-.data-source {
-    font-size: 12px;
-    padding: 2px 8px;
-    background: rgba(255, 255, 255, 0.2);
-    border-radius: 12px;
-    font-weight: 600;
-}
-
-.data-source.real-time {
-    background: rgba(81, 207, 102, 0.3);
-    color: #51cf66;
-}
-
-.data-source.fallback {
-    background: rgba(255, 212, 59, 0.3);
-    color: #ffd43b;
-}
-
 /* 结果容器 */
 .results-container {
+    display: none;
     margin-top: 30px;
 }
 
@@ -317,14 +276,21 @@ select {
 .results-header h2 {
     font-size: 24px;
     font-weight: 700;
-    margin-bottom: 10px;
+    margin-bottom: 15px;
     color: #4dabf7;
+}
+
+.results-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .stock-info {
     font-size: 16px;
     color: #cccccc;
-    margin-bottom: 8px;
 }
 
 .update-time {
@@ -338,12 +304,14 @@ select {
     border-radius: 12px;
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    overflow-x: auto;
 }
 
 .options-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 14px;
+    min-width: 1200px;
 }
 
 .options-table th {
@@ -356,6 +324,7 @@ select {
     cursor: pointer;
     transition: all 0.2s ease;
     position: relative;
+    white-space: nowrap;
 }
 
 .options-table th:hover {
@@ -400,20 +369,25 @@ select {
     background: rgba(77, 171, 247, 0.1);
 }
 
-/* 数值样式 */
-.positive {
-    color: #51cf66;
+/* 期权类型样式 */
+.option-type {
+    padding: 4px 8px;
+    border-radius: 4px;
     font-weight: 600;
+    font-size: 12px;
+    text-align: center;
 }
 
-.negative {
-    color: #ff6b6b;
-    font-weight: 600;
+.call-option {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
 }
 
-.neutral {
-    color: #ffd43b;
-    font-weight: 600;
+.put-option {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+    border: 1px solid rgba(244, 67, 54, 0.3);
 }
 
 /* 评分样式 */
@@ -445,80 +419,6 @@ select {
     color: #ffffff;
 }
 
-/* 响应式设计 */
-@media (max-width: 1200px) {
-    .header-controls {
-        flex-wrap: wrap;
-        gap: 15px;
-    }
-    
-    .control-group {
-        min-width: 180px;
-    }
-}
-
-@media (max-width: 768px) {
-    .container {
-        padding: 10px;
-    }
-    
-    .header-controls {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .control-group {
-        min-width: unset;
-    }
-    
-    .table-container {
-        overflow-x: auto;
-    }
-    
-    .options-table {
-        min-width: 1000px;
-    }
-} 
-
-/* 期权类型样式 */
-.option-type {
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-weight: 600;
-    font-size: 12px;
-    text-align: center;
-}
-
-.call-option {
-    background-color: rgba(76, 175, 80, 0.2);
-    color: #4caf50;
-    border: 1px solid rgba(76, 175, 80, 0.3);
-}
-
-.put-option {
-    background-color: rgba(244, 67, 54, 0.2);
-    color: #f44336;
-    border: 1px solid rgba(244, 67, 54, 0.3);
-}
-
-/* 数值列对齐 */
-.options-table td:nth-child(3),
-.options-table td:nth-child(4),
-.options-table td:nth-child(6),
-.options-table td:nth-child(7),
-.options-table td:nth-child(8),
-.options-table td:nth-child(9),
-.options-table td:nth-child(10),
-.options-table td:nth-child(11),
-.options-table td:nth-child(12) {
-    text-align: right;
-}
-
-/* 期权类型列居中 */
-.options-table td:nth-child(5) {
-    text-align: center;
-}
-
 /* HV相关样式 */
 .hv-value {
     font-weight: 600;
@@ -542,16 +442,111 @@ select {
     color: #ffd43b; /* 黄色：正常范围 */
 }
 
-/* 数据源指示器加载状态 */
-.data-source.loading {
-    background-color: rgba(255, 193, 7, 0.2);
-    color: #ffc107;
-    border: 1px solid rgba(255, 193, 7, 0.3);
-    animation: pulse 2s infinite;
+/* ===== 新增：期权筛选状态样式 ===== */
+
+/* 筛选状态列样式 */
+.filter-status {
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.6; }
-    100% { opacity: 1; }
+.filter-status.qualified {
+    background: rgba(81, 207, 102, 0.2);
+    color: #51cf66;
+    border: 1px solid rgba(81, 207, 102, 0.3);
+}
+
+.filter-status.unqualified {
+    background: rgba(255, 107, 107, 0.2);
+    color: #ff6b6b;
+    border: 1px solid rgba(255, 107, 107, 0.3);
+}
+
+/* 不合格期权行样式 */
+.unqualified-option {
+    opacity: 0.7;
+    background: rgba(255, 107, 107, 0.05) !important;
+}
+
+.unqualified-option:hover {
+    background: rgba(255, 107, 107, 0.1) !important;
+}
+
+/* 成交量指示器样式 */
+.volume-good {
+    color: #51cf66;
+    font-weight: 600;
+}
+
+.volume-low {
+    color: #ff8787;
+    font-weight: 600;
+}
+
+/* 未平仓指示器样式 */
+.open-interest-good {
+    color: #51cf66;
+    font-weight: 600;
+}
+
+.open-interest-low {
+    color: #ff8787;
+    font-weight: 600;
+}
+
+/* IV指示器样式 */
+.iv-normal {
+    color: #51cf66;
+    font-weight: 600;
+}
+
+.iv-abnormal {
+    color: #ff8787;
+    font-weight: 600;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .control-panel {
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .input-group {
+        min-width: 180px;
+    }
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+    
+    .control-panel {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .input-group {
+        min-width: unset;
+    }
+    
+    .results-info {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .options-table {
+        min-width: 1400px;
+    }
+    
+    .options-table th,
+    .options-table td {
+        padding: 10px 8px;
+        font-size: 12px;
+    }
 } 

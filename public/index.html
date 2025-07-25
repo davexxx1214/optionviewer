@@ -8,111 +8,77 @@
 </head>
 <body>
     <div class="container">
-        <!-- 头部控制面板 -->
-        <div class="header-controls">
-            <div class="control-group">
-                <label class="control-label">
-                    <span class="required">*</span> 股票代码
-                </label>
-                <div class="stock-selector">
-                    <select id="stockSelect" style="display: none;">
-                        <option value="">请选择股票</option>
-                    </select>
-                    <div id="stockDropdown" class="dropdown">
-                        <!-- 股票选项将通过JavaScript动态生成 -->
+        <!-- 标题区域 -->
+        <div class="header">
+            <h1>📊 美股期权分析评分系统</h1>
+            <p class="subtitle">基于多维度指标的智能期权分析与评分</p>
+            <div id="dataSourceIndicator" class="data-source-indicator loading">正在加载...</div>
+        </div>
+
+        <!-- 控制面板 -->
+        <div class="control-panel">
+            <div class="input-group">
+                <label for="stockSelect">选择股票</label>
+                <div class="selector-wrapper stock-selector">
+                    <div class="dropdown" id="stockDropdown"></div>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label for="optionType">期权类型</label>
+                <div class="selector-wrapper option-type-selector">
+                    <div class="dropdown" id="optionTypeDropdown">
+                        <div class="dropdown-item" data-value="call">买入看涨 (Buy Call)</div>
+                        <div class="dropdown-item" data-value="put">买入看跌 (Buy Put)</div>
                     </div>
                 </div>
             </div>
 
-            <div class="control-group">
-                <label class="control-label">
-                    <span class="required">*</span> 期权类型
-                </label>
-                <div class="option-type-selector">
-                    <select id="optionType">
-                        <option value="call">买入看涨</option>
-                        <option value="put">买入看跌</option>
-                        <option value="sell-call">卖出看涨</option>
-                        <option value="sell-put">卖出看跌</option>
-                    </select>
-                    <div id="optionTypeDropdown" class="dropdown">
-                        <div class="dropdown-item" data-value="call">买入看涨</div>
-                        <div class="dropdown-item" data-value="put">买入看跌</div>
-                        <div class="dropdown-item" data-value="sell-call">卖出看涨</div>
-                        <div class="dropdown-item" data-value="sell-put">卖出看跌</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="control-group">
-                <label class="control-label">
-                    <span class="required">*</span> 到期天数
-                </label>
-                <div class="expiry-selector">
-                    <select id="expiryDays">
-                        <option value="30">30天</option>
-                        <option value="60">60天</option>
-                        <option value="90">90天</option>
-                        <option value="120">120天</option>
-                        <option value="150">150天</option>
-                        <option value="180">180天</option>
-                        <option value="210">210天</option>
-                        <option value="240">240天</option>
-                    </select>
-                    <div id="expiryDropdown" class="dropdown">
+            <div class="input-group">
+                <label for="expiry">到期天数</label>
+                <div class="selector-wrapper expiry-selector">
+                    <div class="dropdown" id="expiryDropdown">
                         <div class="dropdown-item" data-value="30">30天</div>
                         <div class="dropdown-item" data-value="60">60天</div>
                         <div class="dropdown-item" data-value="90">90天</div>
-                        <div class="dropdown-item" data-value="120">120天</div>
-                        <div class="dropdown-item" data-value="150">150天</div>
-                        <div class="dropdown-item" data-value="180">180天</div>
-                        <div class="dropdown-item" data-value="210">210天</div>
-                        <div class="dropdown-item" data-value="240">240天</div>
                     </div>
                 </div>
             </div>
 
-            <button id="analyzeBtn" class="analyze-btn">
-                <span class="btn-icon">🔍</span>
-                分析
+            <button id="analyzeBtn" class="analyze-btn" disabled>
+                <span>🔍 分析期权</span>
             </button>
         </div>
 
-        <!-- 加载状态 -->
-        <div id="loadingIndicator" class="loading" style="display: none;">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">正在分析期权数据...</div>
+        <!-- 加载指示器 -->
+        <div id="loadingIndicator" class="loading-indicator">
+            <div class="spinner"></div>
+            <span>正在分析期权数据...</span>
         </div>
 
-        <!-- 错误提示 -->
-        <div id="errorMessage" class="error-message" style="display: none;"></div>
+        <!-- 错误消息 -->
+        <div id="errorMessage" class="error-message"></div>
 
-        <!-- 数据更新提示 -->
-        <div class="data-update-notice">
-            <div class="notice-content">
-                <span class="notice-icon">ℹ️</span>
-                <span class="notice-text">股票价格数据每5分钟更新一次</span>
-                <span id="dataSourceIndicator" class="data-source"></span>
-            </div>
-        </div>
-
-        <!-- 结果表格 -->
-        <div id="resultsContainer" class="results-container" style="display: none;">
+        <!-- 结果展示区域 -->
+        <div id="resultsContainer" class="results-container">
             <div class="results-header">
                 <h2 id="resultsTitle">期权分析结果</h2>
-                <div id="stockInfo" class="stock-info"></div>
-                <div id="updateTime" class="update-time"></div>
+                <div class="results-info">
+                    <div id="stockInfo" class="stock-info">股票信息</div>
+                    <div id="updateTime" class="update-time">更新时间</div>
+                </div>
             </div>
 
             <div class="table-container">
-                <table id="optionsTable" class="options-table">
+                <table class="options-table">
                     <thead>
                         <tr>
-                            <th class="sortable" data-sort="symbol">标的</th>
+                            <th class="sortable" data-sort="symbol">股票代码</th>
+                            <th>筛选状态</th>
                             <th class="sortable" data-sort="daysToExpiry">到期天数</th>
                             <th class="sortable" data-sort="strikePrice">行权价</th>
                             <th class="sortable" data-sort="premium">权利金</th>
-                            <th class="sortable" data-sort="type">类型</th>
+                            <th>类型</th>
                             <th class="sortable" data-sort="bid">买入报价</th>
                             <th class="sortable" data-sort="ask">卖出报价</th>
                             <th class="sortable" data-sort="volume">当日成交</th>
