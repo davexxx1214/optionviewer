@@ -508,13 +508,38 @@ select {
 .options-table td:nth-child(7),
 .options-table td:nth-child(8),
 .options-table td:nth-child(9),
-.options-table td:nth-child(10) {
+.options-table td:nth-child(10),
+.options-table td:nth-child(11),
+.options-table td:nth-child(12) {
     text-align: right;
 }
 
 /* 期权类型列居中 */
 .options-table td:nth-child(5) {
     text-align: center;
+}
+
+/* HV相关样式 */
+.hv-value {
+    font-weight: 600;
+    color: #74c0fc;
+}
+
+/* IV/HV比率样式 */
+.iv-hv-ratio {
+    font-weight: 600;
+}
+
+.ratio-high {
+    color: #ff8787; /* 红色：期权可能被高估 */
+}
+
+.ratio-low {
+    color: #51cf66; /* 绿色：期权可能被低估 */
+}
+
+.ratio-normal {
+    color: #ffd43b; /* 黄色：正常范围 */
 }
 
 /* 数据源指示器加载状态 */

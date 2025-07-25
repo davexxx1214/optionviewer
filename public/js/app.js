@@ -335,6 +335,8 @@ function renderOptionsTable(options) {
             <td>${option.volume || 0}</td>
             <td>${option.openInterest || 0}</td>
             <td>${option.impliedVolatility}%</td>
+            <td class="hv-value" title="基于${option.hvPeriod || ''}天计算">${option.historicalVolatility || '-'}${option.historicalVolatility ? '%' : ''}</td>
+            <td class="iv-hv-ratio ${getIVHVRatioClass(option.ivHvRatio)}">${option.ivHvRatio || '-'}${option.ivHvRatio ? '%' : ''}</td>
             <td><span class="score ${getScoreClass(option.score)}">${option.score || '-'}</span></td>
         `;
         elements.optionsTableBody.appendChild(row);
@@ -397,6 +399,14 @@ function getScoreClass(score) {
     if (score >= 60) return 'score-good';
     if (score >= 40) return 'score-average';
     return 'score-poor';
+}
+
+function getIVHVRatioClass(ratio) {
+    if (!ratio) return '';
+    const numRatio = parseFloat(ratio);
+    if (numRatio > 150) return 'ratio-high'; // IV明显高于HV，期权可能被高估
+    if (numRatio < 80) return 'ratio-low';   // IV明显低于HV，期权可能被低估
+    return 'ratio-normal'; // 正常范围
 }
 
 function formatDate(dateString) {

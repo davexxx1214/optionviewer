@@ -161,6 +161,9 @@ async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null
       volume: option.volume,
       openInterest: option.openInterest,
       impliedVolatility: (option.impliedVolatility * 100).toFixed(2), // 转换为百分比
+      historicalVolatility: option.historicalVolatility ? option.historicalVolatility.toFixed(2) : null, // HV
+      hvPeriod: option.hvPeriod, // HV计算周期
+      ivHvRatio: option.historicalVolatility ? ((option.impliedVolatility * 100) / option.historicalVolatility).toFixed(2) : null, // IV/HV比率
       delta: option.delta,
       gamma: option.gamma,
       theta: option.theta,
@@ -235,6 +238,44 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
     const baseIV = 0.3 + (Math.abs(moneyness - 1) * 0.2) + (Math.random() * 0.1);
     const iv = Math.round(baseIV * 100 * 100) / 100;
     
+    // 历史波动率（基于股票和期权周期的模拟）
+    const getDefaultHV = (symbol) => {
+      const defaultHVRanges = {
+        // 科技股通常波动率较高
+        'NVDA': 45, 'TSLA': 50, 'META': 35, 'NFLX': 40,
+        // 大盘股相对稳定
+        'AAPL': 25, 'MSFT': 25, 'GOOGL': 30, 'AMZN': 35,
+        // 金融股
+        'JPM': 20, 'V': 18, 'MA': 18, 'BRK-B': 15,
+        // 消费品
+        'WMT': 15, 'COST': 18, 'HD': 20,
+        // 能源
+        'XOM': 25,
+        // 医药
+        'JNJ': 12, 'LLY': 22,
+        // 半导体
+        'AVGO': 30,
+        // 中概股
+        'BABA': 40, 'PDD': 45, 'JD': 35, 'NTES': 30, 'TME': 35
+      };
+      return defaultHVRanges[symbol] || 25;
+    };
+    
+    const baseHV = getDefaultHV(symbol);
+    const hv = baseHV * (0.9 + Math.random() * 0.2); // 添加一些随机性
+    
+    // HV计算周期
+    let hvPeriod;
+    if (daysToExpiry <= 20) {
+      hvPeriod = 20; // 超短期
+    } else if (daysToExpiry <= 60) {
+      hvPeriod = 30; // 短期
+    } else if (daysToExpiry <= 180) {
+      hvPeriod = 60; // 中期
+    } else {
+      hvPeriod = 180; // 长期
+    }
+    
     // 年化收益率
     const annualizedReturn = (premium / stockPrice) * (365 / daysToExpiry) * 100;
     
@@ -246,9 +287,6 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
       exerciseProbability = moneyness < 1 ? 60 + (1 - moneyness) * 40 : 40 - (moneyness - 1) * 30;
     }
     exerciseProbability = Math.max(5, Math.min(95, exerciseProbability));
-    
-    // 历史波动率
-    const hv = iv * (0.8 + Math.random() * 0.4);
     
     // IVP (隐含波动率百分位)
     const ivp = Math.random() * 100;
@@ -285,12 +323,18 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
       daysToExpiry: daysToExpiry,
       strikePrice: strikePrice,
       premium: Math.round(premium * 100) / 100,
+      type: optionType, // 添加类型字段，与真实数据格式一致
+      bid: Math.max(0, premium * 0.95), // 模拟买入价
+      ask: premium * 1.05, // 模拟卖出价
+      volume: Math.floor(Math.random() * 1000), // 模拟成交量
+      openInterest: Math.floor(Math.random() * 5000), // 模拟未平仓
       annualizedReturn: Math.round(annualizedReturn * 100) / 100,
       exerciseProbability: Math.round(exerciseProbability * 100) / 100,
-      iv: iv,
+      impliedVolatility: iv.toFixed(2), // IV百分比格式
+      historicalVolatility: hv.toFixed(2), // HV百分比格式
+      hvPeriod: hvPeriod, // HV计算周期
       ivp: Math.round(ivp * 100) / 100,
-      hv: Math.round(hv * 100) / 100,
-      ivHvRatio: Math.round(ivHvRatio * 100) / 100,
+      ivHvRatio: (ivHvRatio * 100).toFixed(2), // IV/HV比率百分比
       price: Math.round(premium * 100) / 100,
       earningsDate: earningsDate.toISOString().split('T')[0],
       score: Math.round(score * 100) / 100,
