@@ -323,6 +323,10 @@ function displayResults(data) {
     elements.stockInfo.textContent = `${data.stock.name} - 当前价格: $${data.stock.price} | 合格期权: ${qualifiedCount}/${totalCount}`;
     elements.updateTime.textContent = `更新时间: ${new Date(data.timestamp).toLocaleString('zh-CN')}`;
     
+    // 应用默认排序（按分数降序）
+    sortOptionsData();
+    updateSortIcons();
+    
     // 渲染表格
     renderOptionsTable(appState.optionsData);
     
@@ -356,7 +360,7 @@ function renderOptionsTable(options) {
             <td class="${getIVClass(option.impliedVolatility)}">${option.impliedVolatility}%</td>
             <td class="hv-value" title="基于${option.hvPeriod || ''}天计算">${option.historicalVolatility || '-'}${option.historicalVolatility ? '%' : ''}</td>
             <td class="iv-hv-ratio ${getIVHVRatioClass(option.ivHvRatio)}">${option.ivHvRatio || '-'}</td>
-            <td><span class="score ${getScoreClass(option.score)}">${option.score || 0}</span></td>
+                         <td><span class="score ${getScoreClass(option.score)}" title="${getVVITooltip(option)}">${option.score || 0}</span></td>
         `;
         elements.optionsTableBody.appendChild(row);
     });
@@ -559,4 +563,32 @@ function getFilterTooltip(filters) {
     return `流动性过滤: ${filters.liquidity ? '✓' : '✗'} (成交量>${minVolume}, 未平仓>${minOpenInterest})
 价差过滤: ${filters.bidAskSpread ? '✓' : '✗'} (相对价差<${maxSpread}%)
 IV合理性: ${filters.ivSanity ? '✓' : '✗'} (${minIV}%<IV<${maxIV}%)`;
+}
+
+// 获取VVI评分提示信息
+function getVVITooltip(option) {
+    if (!option.isQualified) {
+        return 'VVI评分: 0 (不合格期权)';
+    }
+    
+    if (!option.vviDetails) {
+        return `VVI评分: ${option.score} (详情不可用)`;
+    }
+    
+    const details = option.vviDetails;
+    const interpretation = getVVIInterpretation(option.score);
+    
+    return `VVI评分: ${option.score}/100 - ${interpretation}
+当前比率(R): ${details.R_current}
+Z-Score: ${details.Z_score}
+历史基准: ${details.benchmark.R_avg.toFixed(3)} ± ${details.benchmark.R_std_dev.toFixed(3)}`;
+}
+
+// 获取VVI评分解释
+function getVVIInterpretation(score) {
+    if (score >= 80) return '极度低估';
+    if (score >= 65) return '低估';
+    if (score >= 35) return '正常估值';
+    if (score >= 20) return '高估';
+    return '极度高估';
 } 

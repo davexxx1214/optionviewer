@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { getHistoricalBenchmark, calculateVVI } = require('./benchmarks');
 
 // 期权过滤器配置
 const FILTER_CONFIG = {
@@ -55,10 +56,7 @@ function applyOptionFilters(option) {
   // 修复：使用正确的范围判断，并添加调试信息
   filters.ivSanity = iv >= FILTER_CONFIG.minImpliedVolatilityPercent && iv <= FILTER_CONFIG.maxImpliedVolatilityPercent;
   
-  // 调试：输出IV异常情况
-  if (!filters.ivSanity && iv > 0) {
-    console.log(`IV过滤调试: 原始值=${option.impliedVolatility}, 解析值=${iv}, 范围=${FILTER_CONFIG.minImpliedVolatilityPercent}-${FILTER_CONFIG.maxImpliedVolatilityPercent}, 通过=${filters.ivSanity}`);
-  }
+  // 移除调试输出，保持日志清晰
   
   // 只有通过全部筛选的期权才是合格期权
   const isQualified = filters.liquidity && filters.bidAskSpread && filters.ivSanity;
@@ -91,6 +89,30 @@ function getFilterStatus(filters) {
   }
 }
 
+// 计算期权的VVI评分（仅对合格期权）
+function calculateOptionVVI(option, symbol) {
+  // 只为合格期权计算VVI
+  if (!option.isQualified) {
+    return 0;
+  }
+  
+  // 获取当前HV和IV值
+  const currentHV = parseFloat(option.historicalVolatility) || 0;
+  const currentIV = parseFloat(option.impliedVolatility) || 0;
+  
+  if (currentHV <= 0 || currentIV <= 0) {
+    return 0;
+  }
+  
+  // 获取历史基准数据
+  const benchmark = getHistoricalBenchmark(symbol);
+  
+  // 计算VVI评分
+  const vviResult = calculateVVI(currentHV, currentIV, benchmark);
+  
+  return vviResult;
+}
+
 // 获取过滤配置（用于API返回）
 function getFilterConfig() {
   return { ...FILTER_CONFIG };
@@ -100,5 +122,6 @@ module.exports = {
   FILTER_CONFIG,
   applyOptionFilters,
   getFilterStatus,
-  getFilterConfig
+  getFilterConfig,
+  calculateOptionVVI
 }; 

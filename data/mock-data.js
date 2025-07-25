@@ -1,7 +1,7 @@
 // 导入股票列表配置和AlphaVantage服务
 const { stocksList } = require('./stocks-config');
 const alphaVantageService = require('../services/alphavantage');
-const { applyOptionFilters } = require('../config/filters');
+const { applyOptionFilters, calculateOptionVVI } = require('../config/filters');
 
 // 缓存的股票数据
 let cachedStocks = null;
@@ -151,40 +151,56 @@ async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null
       daysToExpiry
     );
     
-    // 转换为前端需要的格式并应用过滤器
-    const formattedOptions = filteredOptions.map(option => {
-      const filterResult = applyOptionFilters(option);
-      
-      return {
-        symbol: option.symbol,
-        contractID: option.contractID,
-        daysToExpiry: option.daysToExpiry,
-        strikePrice: option.strikePrice,
-        premium: option.premium,
-        type: option.type,
-        bid: option.bid,
-        ask: option.ask,
-        volume: option.volume,
-        openInterest: option.openInterest,
-        impliedVolatility: (option.impliedVolatility * 100).toFixed(2), // 转换为百分比
-        historicalVolatility: option.historicalVolatility ? option.historicalVolatility.toFixed(2) : null, // HV
-        hvPeriod: option.hvPeriod, // HV计算周期
-                 ivHvRatio: option.historicalVolatility ? (option.impliedVolatility / (option.historicalVolatility / 100)).toFixed(2) : null, // IV/HV比率
-        delta: option.delta,
-        gamma: option.gamma,
-        theta: option.theta,
-        vega: option.vega,
-        rho: option.rho,
-        lastPrice: option.lastPrice,
-        expiration: option.expiration,
-        score: filterResult.isQualified ? null : 0, // 不合格期权评分为0
-        dataSource: 'real-time',
-        // 新增筛选相关字段
-        isQualified: filterResult.isQualified,
-        filterStatus: filterResult.filterStatus,
-        filters: filterResult.filters
-      };
-    });
+         // 转换为前端需要的格式并应用过滤器
+     const formattedOptions = filteredOptions.map(option => {
+       const filterResult = applyOptionFilters(option);
+       
+       // 构建基础期权对象
+       const formattedOption = {
+         symbol: option.symbol,
+         contractID: option.contractID,
+         daysToExpiry: option.daysToExpiry,
+         strikePrice: option.strikePrice,
+         premium: option.premium,
+         type: option.type,
+         bid: option.bid,
+         ask: option.ask,
+         volume: option.volume,
+         openInterest: option.openInterest,
+         impliedVolatility: (option.impliedVolatility * 100).toFixed(2), // 转换为百分比
+         historicalVolatility: option.historicalVolatility ? option.historicalVolatility.toFixed(2) : null, // HV
+         hvPeriod: option.hvPeriod, // HV计算周期
+         ivHvRatio: option.historicalVolatility ? (option.impliedVolatility / (option.historicalVolatility / 100)).toFixed(2) : null, // IV/HV比率
+         delta: option.delta,
+         gamma: option.gamma,
+         theta: option.theta,
+         vega: option.vega,
+         rho: option.rho,
+         lastPrice: option.lastPrice,
+         expiration: option.expiration,
+         dataSource: 'real-time',
+         // 筛选相关字段
+         isQualified: filterResult.isQualified,
+         filterStatus: filterResult.filterStatus,
+         filters: filterResult.filters
+       };
+       
+       // 计算VVI评分（仅对合格期权）
+       if (filterResult.isQualified) {
+         const vviResult = calculateOptionVVI(formattedOption, symbol);
+         formattedOption.score = vviResult.VVI;
+         formattedOption.vviDetails = {
+           R_current: vviResult.R_current.toFixed(3),
+           Z_score: vviResult.Z_score.toFixed(2),
+           benchmark: vviResult.benchmark
+         };
+       } else {
+         formattedOption.score = 0;
+         formattedOption.vviDetails = null;
+       }
+       
+       return formattedOption;
+     });
 
     console.log(`成功获取 ${formattedOptions.length} 个期权合约数据`);
     return formattedOptions;
@@ -311,40 +327,32 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
     const volume = Math.floor(Math.random() * 200); // 模拟成交量 0-200
     const openInterest = Math.floor(Math.random() * 1000); // 模拟未平仓 0-1000
     
-    // 应用过滤器
-    const mockOption = {
-      bid: bid,
-      ask: ask,
-      volume: volume,
-      openInterest: openInterest,
-      impliedVolatility: iv
-    };
-    
-    const filterResult = applyOptionFilters(mockOption);
-    
-    // 评分算法（综合评分）
-    let score = 0;
-    
-    // 只有合格期权才计算评分
-    if (filterResult.isQualified) {
-      // 流动性评分（基于moneyness）
-      const liquidityScore = Math.max(0, 100 - Math.abs(moneyness - 1) * 200);
-      
-      // 风险收益评分
-      const riskReturnScore = Math.min(100, annualizedReturn * 2);
-      
-      // 波动率评分
-      const volatilityScore = ivp < 20 ? 20 : (ivp > 80 ? 80 : ivp);
-      
-      // 时间价值评分
-      const timeValueScore = Math.min(100, (timeValue / premium) * 100);
-      
-      // 综合评分
-      score = (liquidityScore * 0.3 + riskReturnScore * 0.25 + volatilityScore * 0.25 + timeValueScore * 0.2);
-    } else {
-      // 不合格期权评分为0
-      score = 0;
-    }
+         // 构建模拟期权对象用于过滤
+     const mockOption = {
+       bid: bid,
+       ask: ask,
+       volume: volume,
+       openInterest: openInterest,
+       impliedVolatility: iv,
+       historicalVolatility: hv
+     };
+     
+     const filterResult = applyOptionFilters(mockOption);
+     
+     // VVI评分计算
+     let score = 0;
+     let vviDetails = null;
+     
+     // 只有合格期权才计算VVI评分
+     if (filterResult.isQualified) {
+       const vviResult = calculateOptionVVI(mockOption, symbol);
+       score = vviResult.VVI;
+       vviDetails = {
+         R_current: vviResult.R_current.toFixed(3),
+         Z_score: vviResult.Z_score.toFixed(2),
+         benchmark: vviResult.benchmark
+       };
+     }
     
     // 获取财报日期（模拟）
     const earningsDate = new Date();
@@ -370,13 +378,15 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
       ivp: Math.round(ivp * 100) / 100,
              ivHvRatio: ivHvRatio.toFixed(2), // IV/HV比率
       price: Math.round(premium * 100) / 100,
-      earningsDate: earningsDate.toISOString().split('T')[0],
-      score: Math.round(score * 100) / 100,
-      optionType: optionType,
-      // 新增筛选相关字段
-      isQualified: filterResult.isQualified,
-      filterStatus: filterResult.filterStatus,
-      filters: filterResult.filters
+             earningsDate: earningsDate.toISOString().split('T')[0],
+       score: score,
+       optionType: optionType,
+       // 筛选相关字段
+       isQualified: filterResult.isQualified,
+       filterStatus: filterResult.filterStatus,
+       filters: filterResult.filters,
+       // VVI评分详情
+       vviDetails: vviDetails
     });
   });
   
