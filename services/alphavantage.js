@@ -429,10 +429,12 @@ class AlphaVantageService {
         try {
             console.log(`从API获取 ${symbol} 历史价格数据`);
             const url = `${this.baseUrl}/query`;
+            // 当所需天数超过100天时，使用 full 以确保有足够历史数据
+            const outputsize = (days + 1 > 100) ? 'full' : 'compact';
             const params = {
                 function: 'TIME_SERIES_DAILY_ADJUSTED',
                 symbol: symbol,
-                outputsize: 'compact', // 获取最近100个交易日数据
+                outputsize: outputsize,
                 datatype: 'json',
                 apikey: this.apiKey
             };
