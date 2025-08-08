@@ -1,4 +1,6 @@
 const axios = require('axios');
+const hvCacheManager = require('./hv-cache');
+const priceCacheManager = require('./price-cache');
 require('dotenv').config();
 
 class AlphaVantageService {
@@ -17,13 +19,19 @@ class AlphaVantageService {
      * @returns {Promise<Object>} 股票价格数据
      */
     async getStockPrice(symbol, forceRefresh = false) {
-        const cacheKey = `price_${symbol}`;
-        
+        // 优先检查天级缓存
         if (!forceRefresh) {
-            const cachedData = this.getCachedData(cacheKey);
-            if (cachedData) {
-                console.log(`从缓存获取 ${symbol} 价格数据`);
-                return cachedData;
+            const dailyCachedData = await priceCacheManager.getCachedPrice(symbol);
+            if (dailyCachedData) {
+                return dailyCachedData;
+            }
+            
+            // 如果天级缓存没有，检查内存缓存（5分钟缓存）
+            const cacheKey = `price_${symbol}`;
+            const memoryCachedData = this.getCachedData(cacheKey);
+            if (memoryCachedData) {
+                console.log(`从内存缓存获取 ${symbol} 价格数据`);
+                return memoryCachedData;
             }
         } else {
             console.log(`强制刷新 ${symbol} 价格数据`);
@@ -31,6 +39,7 @@ class AlphaVantageService {
 
         try {
             console.log(`从API获取 ${symbol} 价格数据`);
+            const cacheKey = `price_${symbol}`;
             const url = `${this.baseUrl}/query`;
             const params = {
                 function: 'TIME_SERIES_INTRADAY',
@@ -64,7 +73,7 @@ class AlphaVantageService {
             }
 
             // 获取最新的时间戳和价格数据
-            const timestamps = Object.keys(timeSeries).sort().reverse();
+            const timestamps = Object.keys(timeSeries).sort((a, b) => b.localeCompare(a));
             const latestTimestamp = timestamps[0];
             const latestData = timeSeries[latestTimestamp];
 
@@ -79,8 +88,11 @@ class AlphaVantageService {
                 lastUpdated: new Date().toISOString()
             };
 
-            // 缓存数据
+            // 缓存数据到内存（5分钟缓存）
             this.setCachedData(cacheKey, priceData);
+            
+            // 缓存数据到天级缓存
+            await priceCacheManager.setCachedPrice(symbol, priceData);
             
             return priceData;
 
@@ -93,31 +105,70 @@ class AlphaVantageService {
     }
 
     /**
-     * 批量获取多个股票的价格数据
+     * 批量获取多个股票的价格数据（智能缓存版本）
      * @param {Array<string>} symbols - 股票代码数组
      * @returns {Promise<Array>} 股票价格数据数组
      */
     async getBatchStockPrices(symbols) {
-        const results = [];
+        console.log(`开始批量获取 ${symbols.length} 只股票的价格数据...`);
         
-        // 为了避免API速率限制，我们串行请求，每个请求之间间隔200ms
-        for (const symbol of symbols) {
+        // 检查哪些股票已有缓存，哪些需要从API获取
+        const cacheStatus = await priceCacheManager.checkStockCacheStatus(symbols);
+        
+        console.log(`缓存状态检查完成: 已缓存 ${cacheStatus.cached.length} 只，需要获取 ${cacheStatus.needFetch.length} 只`);
+        
+        const results = [];
+        const newPriceData = [];
+        
+        // 1. 先获取已缓存的数据
+        for (const symbol of cacheStatus.cached) {
             try {
-                const priceData = await this.getStockPrice(symbol);
-                results.push(priceData);
-                
-                // 添加延迟以避免API速率限制
-                if (symbols.indexOf(symbol) < symbols.length - 1) {
-                    await this.delay(200);
-                }
+                const cachedData = await priceCacheManager.getCachedPrice(symbol);
+                results.push(cachedData);
             } catch (error) {
-                console.error(`获取 ${symbol} 失败:`, error.message);
-                // 如果某个股票失败，使用备选数据
-                results.push(this.getFallbackPrice(symbol));
+                console.error(`从缓存获取 ${symbol} 失败:`, error.message);
+                // 如果缓存读取失败，加入需要获取的列表
+                cacheStatus.needFetch.push(symbol);
             }
         }
         
-        return results;
+        // 2. 再获取需要从API获取的数据
+        if (cacheStatus.needFetch.length > 0) {
+            console.log(`需要从API获取 ${cacheStatus.needFetch.length} 只股票数据: ${cacheStatus.needFetch.join(', ')}`);
+            
+            for (const symbol of cacheStatus.needFetch) {
+                try {
+                    const priceData = await this.getStockPrice(symbol);
+                    results.push(priceData);
+                    newPriceData.push(priceData);
+                    
+                    // 添加延迟以避免API速率限制
+                    if (cacheStatus.needFetch.indexOf(symbol) < cacheStatus.needFetch.length - 1) {
+                        await this.delay(200);
+                    }
+                } catch (error) {
+                    console.error(`获取 ${symbol} 失败:`, error.message);
+                    // 如果某个股票失败，使用备选数据
+                    const fallbackData = this.getFallbackPrice(symbol);
+                    results.push(fallbackData);
+                    newPriceData.push(fallbackData);
+                }
+            }
+            
+            // 3. 批量缓存新获取的数据
+            if (newPriceData.length > 0) {
+                await priceCacheManager.setBatchCachedPrices(newPriceData);
+            }
+        }
+        
+        // 4. 按原始顺序排序结果
+        const sortedResults = symbols.map(symbol => 
+            results.find(result => result.symbol === symbol)
+        ).filter(Boolean);
+        
+        console.log(`批量获取完成: 总计 ${sortedResults.length} 只股票，其中 ${cacheStatus.cached.length} 只来自缓存，${cacheStatus.needFetch.length} 只来自API`);
+        
+        return sortedResults;
     }
 
     /**
@@ -475,7 +526,7 @@ class AlphaVantageService {
                     volume: parseInt(timeSeries[date]['6. volume'])
                 }));
 
-            // 缓存数据（历史数据缓存时间可以更长）
+            // 缓存历史价格数据（只在内存中缓存，不持久化）
             this.setCachedData(cacheKey, prices);
             
             return prices;
@@ -494,6 +545,14 @@ class AlphaVantageService {
      */
     async calculateHistoricalVolatility(symbol, days) {
         try {
+            // 首先检查今天是否已有缓存
+            const cachedHV = await hvCacheManager.getCachedHV(symbol, days);
+            if (cachedHV !== null) {
+                return cachedHV;
+            }
+
+            console.log(`计算 ${symbol} ${days}天HV（无缓存，需要API调用）`);
+
             // 获取历史价格数据
             const prices = await this.getHistoricalPrices(symbol, days);
             
@@ -529,6 +588,10 @@ class AlphaVantageService {
             const hvPercent = annualizedVolatility * 100;
 
             console.log(`${symbol} ${days}天HV: ${hvPercent.toFixed(2)}%`);
+            
+            // 将计算结果缓存到今天的缓存中
+            await hvCacheManager.setCachedHV(symbol, days, hvPercent);
+            
             return hvPercent;
 
         } catch (error) {
@@ -585,11 +648,81 @@ class AlphaVantageService {
     }
 
     /**
-     * 清除缓存
+     * 清除内存价格缓存（保留天级缓存和HV缓存）
      */
-    clearCache() {
+    clearMemoryCache() {
         this.cache.clear();
-        console.log('缓存已清除');
+        console.log('内存价格缓存已清除');
+    }
+
+    /**
+     * 清除天级价格缓存
+     */
+    async clearDailyPriceCache() {
+        await priceCacheManager.clearCache();
+        console.log('天级价格缓存已清除');
+    }
+
+    /**
+     * 清除所有价格缓存（内存 + 天级）
+     */
+    async clearAllPriceCache() {
+        this.cache.clear();
+        await priceCacheManager.clearCache();
+        console.log('所有价格缓存已清除');
+    }
+
+    /**
+     * 清除HV缓存
+     */
+    async clearHVCache() {
+        await hvCacheManager.clearCache();
+        console.log('HV缓存已清除');
+    }
+
+    /**
+     * 获取价格缓存统计信息
+     */
+    async getPriceCacheStats() {
+        return await priceCacheManager.getCacheStats();
+    }
+
+    /**
+     * 获取HV缓存统计信息
+     */
+    async getHVCacheStats() {
+        return await hvCacheManager.getCacheStats();
+    }
+
+    /**
+     * 获取所有缓存统计信息
+     */
+    async getAllCacheStats() {
+        const priceStats = await this.getPriceCacheStats();
+        const hvStats = await this.getHVCacheStats();
+        
+        return {
+            price: priceStats,
+            hv: hvStats,
+            memory: {
+                cacheCount: this.cache.size,
+                cacheDuration: this.cacheDuration
+            }
+        };
+    }
+
+    /**
+     * 获取所有缓存的HV数据（调试用）
+     */
+    async getAllCachedHVData() {
+        return await hvCacheManager.getAllCachedData();
+    }
+
+    /**
+     * 获取所有缓存的价格数据（调试用）
+     */
+    async getAllCachedPriceData() {
+        return await priceCacheManager.getAllCachedData();
     }
 }
 

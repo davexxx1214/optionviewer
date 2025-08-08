@@ -37,7 +37,11 @@ async function getStocksWithRealTimePrices() {
         volume: priceData ? priceData.volume : null,
         timestamp: priceData ? priceData.timestamp : new Date().toISOString(),
         lastUpdated: priceData ? priceData.lastUpdated : new Date().toISOString(),
-        isRealTime: priceData ? !priceData.fallback : false
+        isRealTime: priceData ? !priceData.fallback : false,
+        // 传递缓存相关字段
+        fromCache: priceData ? priceData.fromCache : false,
+        cachedAt: priceData ? priceData.cachedAt : null,
+        fallback: priceData ? priceData.fallback : true
       };
     });
 

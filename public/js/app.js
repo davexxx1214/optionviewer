@@ -36,6 +36,9 @@ function initializeApp() {
     initializeDropdowns();
     setupEventListeners();
     loadStocksList();
+    
+    // 加载HV缓存状态
+    loadHVCacheStatus();
 }
 
 // 设置事件监听器
@@ -146,7 +149,6 @@ function handleStockChange(value) {
         // 从下拉菜单中获取股票名称
         const dropdownItem = document.querySelector(`[data-value="${value}"]`);
         if (dropdownItem) {
-            const symbolElement = dropdownItem.querySelector('div:first-child');
             const nameElement = dropdownItem.querySelector('div:last-child');
             selectedStock = {
                 symbol: value,
@@ -210,6 +212,11 @@ async function loadStockPricesInBackground() {
         if (result.success) {
             // 保存完整的股票列表到本地存储
             localStorage.setItem('stocksList', JSON.stringify(result.data));
+            
+            // 调试日志：检查接收到的数据源
+            console.log('收到的数据源类型:', result.dataSource);
+            console.log('第一个股票的fromCache状态:', result.data[0]?.fromCache);
+            console.log('第一个股票的cachedAt:', result.data[0]?.cachedAt);
             
             // 更新数据源指示器
             updateDataSourceIndicator(result.dataSource, result.lastUpdated);
@@ -301,6 +308,9 @@ async function analyzeOptions() {
             localStorage.setItem('maxImpliedVolatility', result.data.filterConfig?.maxImpliedVolatilityPercent || '200');
             
             displayResults(result.data);
+            
+            // 分析完成后刷新HV缓存状态
+            loadHVCacheStatus();
         } else {
             showError(result.message || '分析失败');
         }
@@ -486,6 +496,10 @@ function updateDataSourceIndicator(dataSource, lastUpdated) {
             indicator.textContent = '实时数据';
             indicator.classList.add('real-time');
             break;
+        case 'cached':
+            indicator.textContent = '实时数据（缓存）';
+            indicator.classList.add('real-time');
+            break;
         case 'fallback':
             indicator.textContent = '模拟数据';
             indicator.classList.add('fallback');
@@ -591,4 +605,54 @@ function getVVIInterpretation(score) {
     if (score >= 35) return '正常估值';
     if (score >= 20) return '高估';
     return '极度高估';
+}
+
+// 加载HV缓存状态
+async function loadHVCacheStatus() {
+    try {
+        const response = await fetch('/api/cache/hv/stats');
+        const result = await response.json();
+        
+        if (result.success) {
+            updateHVCacheIndicator(result.data);
+        } else {
+            updateHVCacheIndicator(null);
+        }
+    } catch (error) {
+        console.error('获取HV缓存状态失败:', error);
+        updateHVCacheIndicator(null);
+    }
+}
+
+// 更新HV缓存指示器
+function updateHVCacheIndicator(cacheStats) {
+    const indicator = document.getElementById('hvCacheIndicator');
+    if (!indicator) return;
+    
+    // 移除所有样式类
+    indicator.classList.remove('real-time', 'fallback', 'loading');
+    
+    if (!cacheStats) {
+        indicator.textContent = 'HV缓存未知';
+        indicator.classList.add('fallback');
+        indicator.title = 'HV缓存状态未知';
+        return;
+    }
+    
+    const today = new Date().toISOString().split('T')[0];
+    const isToday = cacheStats.date === today;
+    
+    if (isToday && cacheStats.cacheCount > 0) {
+        indicator.textContent = `HV已缓存 (${cacheStats.cacheCount})`;
+        indicator.classList.add('real-time');
+        indicator.title = `今日已缓存${cacheStats.cacheCount}个HV值，避免重复计算`;
+    } else if (isToday && cacheStats.cacheCount === 0) {
+        indicator.textContent = 'HV缓存空';
+        indicator.classList.add('loading');
+        indicator.title = '今日HV缓存为空，计算后将自动缓存';
+    } else {
+        indicator.textContent = 'HV缓存过期';
+        indicator.classList.add('fallback');
+        indicator.title = `缓存日期：${cacheStats.date}，今日：${today}`;
+    }
 } 
