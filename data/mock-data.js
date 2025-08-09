@@ -141,7 +141,7 @@ const getStocks = getStocksWithRealTimePrices;
 
 
 // 获取真实期权数据
-async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null) {
+async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null, benchmarkData = null) {
   try {
     console.log(`获取 ${symbol} 的真实期权数据...`);
     
@@ -186,21 +186,38 @@ async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null
          // 筛选相关字段
          isQualified: filterResult.isQualified,
          filterStatus: filterResult.filterStatus,
-         filters: filterResult.filters
+         filters: filterResult.filters,
+         benchmarkAnalysis: null
        };
        
-       // 计算VVI评分（仅对合格期权）
-       if (filterResult.isQualified) {
-         const vviResult = calculateOptionVVI(formattedOption, symbol);
-         formattedOption.score = vviResult.VVI;
-         formattedOption.vviDetails = {
-           R_current: vviResult.R_current.toFixed(3),
-           Z_score: vviResult.Z_score.toFixed(2),
-           benchmark: vviResult.benchmark
-         };
-       } else {
-         formattedOption.score = 0;
-         formattedOption.vviDetails = null;
+       // 如果是NVDA并且有基准数据，则进行分析
+       if (symbol.toUpperCase() === 'NVDA' && benchmarkData && benchmarkData.benchmarks) {
+         const dte = option.daysToExpiry;
+         const currentIV = option.impliedVolatility; // IV已经是小数形式
+         
+         let category = null;
+         if (dte <= 20) category = 'ultra_short';
+         else if (dte <= 60) category = 'short';
+         else if (dte <= 180) category = 'medium';
+         else category = 'long';
+         
+         const benchmark = benchmarkData.benchmarks[category];
+         
+         if (benchmark && benchmark.averageIV > 0) {
+           const ratio = currentIV / benchmark.averageIV;
+           let comparison = 'normal';
+           if (ratio > 1.2) comparison = 'high';
+           else if (ratio < 0.8) comparison = 'low';
+           
+           formattedOption.benchmarkAnalysis = {
+             category: category,
+             currentIV: (currentIV * 100).toFixed(2) + '%',
+             benchmarkIV: (benchmark.averageIV * 100).toFixed(2) + '%',
+             ratio: ratio.toFixed(2),
+             comparison: comparison,
+             sampleCount: benchmark.sampleCount
+           };
+         }
        }
        
        return formattedOption;
@@ -216,10 +233,10 @@ async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null
 }
 
 // 期权数据获取函数（优先使用真实数据，失败时使用模拟数据）
-async function getOptionsData(symbol, stockPrice, optionType, daysToExpiry) {
+async function getOptionsData(symbol, stockPrice, optionType, daysToExpiry, benchmarkData = null) {
   try {
     // 首先尝试获取真实期权数据
-    const realOptions = await getRealOptionsData(symbol, optionType, daysToExpiry);
+    const realOptions = await getRealOptionsData(symbol, optionType, daysToExpiry, benchmarkData);
     
     if (realOptions.length > 0) {
       console.log(`使用 ${symbol} 的真实期权数据`);
@@ -322,21 +339,8 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
      
      const filterResult = applyOptionFilters(mockOption);
      
-     // VVI评分计算
-     let score = 0;
-     let vviDetails = null;
+     // VVI评分计算 - 这部分将被移除
      
-     // 只有合格期权才计算VVI评分
-     if (filterResult.isQualified) {
-       const vviResult = calculateOptionVVI(mockOption, symbol);
-       score = vviResult.VVI;
-       vviDetails = {
-         R_current: vviResult.R_current.toFixed(3),
-         Z_score: vviResult.Z_score.toFixed(2),
-         benchmark: vviResult.benchmark
-       };
-     }
-    
     // 获取财报日期（模拟）
     const earningsDate = new Date();
     earningsDate.setDate(earningsDate.getDate() + Math.floor(Math.random() * 90) + 30);
@@ -365,19 +369,16 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
              ivHvRatio: ivHvRatio.toFixed(2), // IV/HV比率
       price: Math.round(premium * 100) / 100,
              earningsDate: earningsDate.toISOString().split('T')[0],
-       score: score,
        optionType: optionType,
        // 筛选相关字段
        isQualified: filterResult.isQualified,
        filterStatus: filterResult.filterStatus,
-       filters: filterResult.filters,
-       // VVI评分详情
-       vviDetails: vviDetails
+       filters: filterResult.filters
     });
   });
   
   // 按评分排序
-  return options.sort((a, b) => b.score - a.score);
+  return options;
 }
 
 module.exports = {

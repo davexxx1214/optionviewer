@@ -92,12 +92,24 @@ router.get('/options/:symbol', async (req, res) => {
       });
     }
     
+    // 如果是NVDA，加载并附加基准数据
+    let benchmarkData = null;
+    if (symbol.toUpperCase() === 'NVDA') {
+      try {
+        benchmarkData = await nvdaHistoricalBenchmarkService.loadBenchmarkData();
+        console.log('成功加载NVDA历史基准数据用于分析');
+      } catch (error) {
+        console.log('加载NVDA历史基准数据失败，分析时将不使用基准:', error.message);
+      }
+    }
+
     // 获取期权数据（优先使用真实数据）
     const optionsData = await getOptionsData(
       stock.symbol, 
       stock.price, 
       type.toLowerCase(), 
-      parseInt(days)
+      parseInt(days),
+      benchmarkData // 传递基准数据
     );
     
     // 判断数据源

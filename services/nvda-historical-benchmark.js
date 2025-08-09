@@ -330,9 +330,6 @@ class NVDAHistoricalBenchmarkService {
      * @returns {Object} 按DTE分类的期权数据
      */
     categorizeOptionsByDTE(optionsData, referenceDate) {
-        console.log(`\n=== categorizeOptionsByDTE 开始执行 ===`);
-        console.log(`处理 ${optionsData.length} 个期权，参考日期: ${referenceDate}`);
-        
         const result = {
             ultra_short: [],  // 0-20天
             short: [],        // 21-60天  
@@ -341,11 +338,8 @@ class NVDAHistoricalBenchmarkService {
         };
         
         const refDate = new Date(referenceDate);
-        let processedCount = 0;
         
         optionsData.forEach(option => {
-            processedCount++;
-            
             // 按用户要求：后台基准数据更新时不过滤任何期权
             if (option.expiration) {
                 const expDate = new Date(option.expiration);
@@ -357,14 +351,6 @@ class NVDAHistoricalBenchmarkService {
                 // 获取IV值（兼容不同的字段名称）
                 const ivValue = option.impliedVolatility !== undefined ? option.impliedVolatility : option.implied_volatility;
                 const iv = parseFloat(ivValue) || 0;
-                
-                // 前5个期权显示详细调试信息
-                if (processedCount <= 5) {
-                    console.log(`期权 ${processedCount}: ${option.contractID || option.symbol}`);
-                    console.log(`  到期日: ${option.expiration}, DTE: ${daysToExpiry}, 绝对DTE: ${absoluteDTE}`);
-                    console.log(`  implied_volatility: ${option.implied_volatility}, impliedVolatility: ${option.impliedVolatility}`);
-                    console.log(`  最终IV值: ${iv}`);
-                }
                 
                 const optionWithIV = { ...option, implied_volatility: iv };
                 
@@ -380,17 +366,6 @@ class NVDAHistoricalBenchmarkService {
                 }
             }
         });
-        
-        console.log(`categorizeOptionsByDTE 完成，结果统计:`);
-        Object.entries(result).forEach(([key, arr]) => {
-            if (arr.length > 0) {
-                const sampleIVs = arr.slice(0, 3).map(opt => opt.implied_volatility);
-                console.log(`  ${key}: ${arr.length}个期权，前3个IV值: [${sampleIVs.join(', ')}]`);
-            } else {
-                console.log(`  ${key}: 0个期权`);
-            }
-        });
-        console.log(`=== categorizeOptionsByDTE 结束 ===\n`);
         
         return result;
     }
@@ -638,11 +613,7 @@ class NVDAHistoricalBenchmarkService {
                     }
                     
                     // 4.2 按DTE对期权进行分类并收集IV数据
-                    console.log(`\n=== 开始分类 ${tradingDay} 的 ${optionsData.length} 个期权 ===`);
                     const categorizedOptions = this.categorizeOptionsByDTE(optionsData, tradingDay);
-                    console.log(`分类完成，结果:`, Object.fromEntries(
-                        Object.entries(categorizedOptions).map(([key, arr]) => [key, `${arr.length}个期权`])
-                    ));
                     
                     // 4.3 将IV数据添加到对应区间（按用户要求不过滤任何期权）
                     Object.keys(allIVData).forEach(category => {
@@ -652,8 +623,7 @@ class NVDAHistoricalBenchmarkService {
                                     // 兼容两种字段名称
                                     const iv = opt.impliedVolatility !== undefined ? opt.impliedVolatility : opt.implied_volatility;
                                     return parseFloat(iv) || 0;
-                                }); // 包含所有IV值，包括0和undefined的
-                            console.log(`${category} 区间添加 ${ivValues.length} 个IV值，前5个: [${ivValues.slice(0,5).join(', ')}]`);
+                                }); 
                             allIVData[category].push(...ivValues);
                         }
                     });
