@@ -359,7 +359,7 @@ function renderOptionsTable(options) {
         row.innerHTML = `
             <td>${option.symbol}</td>
             <td class="filter-status ${option.isQualified ? 'qualified' : 'unqualified'}" title="${getFilterTooltip(option.filters)}">${option.filterStatus || '合格期权'}</td>
-            <td>${option.daysToExpiry}</td>
+            <td class="${option.daysToExpiry <= 0 ? 'expired-option' : ''}" title="${option.daysToExpiry <= 0 ? '此期权已过期' : ''}">${option.daysToExpiry <= 0 ? '已过期' : option.daysToExpiry}</td>
             <td>$${option.strikePrice}</td>
             <td>$${option.premium}</td>
             <td class="option-type ${option.type === 'call' ? 'call-option' : 'put-option'}">${option.type.toUpperCase()}</td>

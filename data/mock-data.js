@@ -307,8 +307,9 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
       hvPeriod = 180; // 长期
     }
     
-    // 年化收益率
-    const annualizedReturn = (premium / stockPrice) * (365 / daysToExpiry) * 100;
+    // 年化收益率（确保使用有效的到期天数）
+    const validDaysForCalculation = Math.max(1, daysToExpiry);
+    const annualizedReturn = (premium / stockPrice) * (365 / validDaysForCalculation) * 100;
     
     // 行权概率（基于moneyness）
     let exerciseProbability;
@@ -362,11 +363,14 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
     const earningsDate = new Date();
     earningsDate.setDate(earningsDate.getDate() + Math.floor(Math.random() * 90) + 30);
     
+    // 🔥 确保模拟数据的到期天数为正数
+    const validDaysToExpiry = Math.max(1, daysToExpiry);
+    
     options.push({
       symbol: symbol,
       date: new Date().toISOString().split('T')[0],
       currentPrice: stockPrice,
-      daysToExpiry: daysToExpiry,
+      daysToExpiry: validDaysToExpiry,
       strikePrice: strikePrice,
       premium: Math.round(premium * 100) / 100,
       type: optionType, // 添加类型字段，与真实数据格式一致

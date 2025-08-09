@@ -322,11 +322,17 @@ class AlphaVantageService {
         const expiryGroups = {};
         const processedOptions = [];
 
-        // 第一步：按到期天数分组
+        // 第一步：按到期天数分组，同时过滤已过期期权
         rawData.forEach(option => {
             const expirationDate = new Date(option.expiration);
             const currentDate = new Date();
             const daysToExpiry = Math.ceil((expirationDate - currentDate) / (1000 * 60 * 60 * 24));
+            
+            // 🔥 重要修复：跳过已过期的期权
+            if (daysToExpiry <= 0) {
+                console.log(`跳过已过期期权: ${option.contractID || option.symbol} 到期日: ${option.expiration} (到期天数: ${daysToExpiry})`);
+                return; // 跳过这个期权
+            }
             
             const hvPeriod = this.getHVCalculationPeriod(daysToExpiry);
             
@@ -406,6 +412,16 @@ class AlphaVantageService {
      */
     filterOptionsData(optionsData, type = null, maxDays = null) {
         let filtered = [...optionsData];
+
+        // 🔥 重要修复：首先过滤掉已过期的期权（daysToExpiry <= 0）
+        filtered = filtered.filter(option => {
+            const daysToExpiry = option.daysToExpiry;
+            if (daysToExpiry <= 0) {
+                console.log(`过滤已过期期权: ${option.contractID || option.symbol} (到期天数: ${daysToExpiry})`);
+                return false;
+            }
+            return true;
+        });
 
         // 按期权类型筛选
         if (type) {

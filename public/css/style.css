@@ -487,6 +487,16 @@ body {
     background: rgba(255, 107, 107, 0.1) !important;
 }
 
+/* 已过期期权的样式 */
+.expired-option {
+    background: #dc3545 !important;
+    color: white !important;
+    font-weight: bold;
+    text-align: center;
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
 /* 成交量指示器样式 */
 .volume-good {
     color: #51cf66;
