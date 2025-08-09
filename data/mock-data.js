@@ -269,31 +269,9 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
     const baseIV = 0.3 + (Math.abs(moneyness - 1) * 0.2) + (Math.random() * 0.1);
     const iv = Math.round(baseIV * 100 * 100) / 100;
     
-    // 历史波动率（基于股票和期权周期的模拟）
-    const getDefaultHV = (symbol) => {
-      const defaultHVRanges = {
-        // 科技股通常波动率较高
-        'NVDA': 45, 'TSLA': 50, 'META': 35, 'NFLX': 40,
-        // 大盘股相对稳定
-        'AAPL': 25, 'MSFT': 25, 'GOOGL': 30, 'AMZN': 35,
-        // 金融股
-        'JPM': 20, 'V': 18, 'MA': 18, 'BRK-B': 15,
-        // 消费品
-        'WMT': 15, 'COST': 18, 'HD': 20,
-        // 能源
-        'XOM': 25,
-        // 医药
-        'JNJ': 12, 'LLY': 22,
-        // 半导体
-        'AVGO': 30,
-        // 中概股
-        'BABA': 40, 'PDD': 45, 'JD': 35, 'NTES': 30, 'TME': 35
-      };
-      return defaultHVRanges[symbol] || 25;
-    };
-    
-    const baseHV = getDefaultHV(symbol);
-    const hv = baseHV * (0.9 + Math.random() * 0.2); // 添加一些随机性
+    // 历史波动率（使用分段HV函数）
+    const { getSegmentedHV } = require('../config/benchmarks');
+    const hv = getSegmentedHV(symbol, daysToExpiry);
     
     // HV计算周期
     let hvPeriod;
