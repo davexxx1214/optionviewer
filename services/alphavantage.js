@@ -251,7 +251,7 @@ class AlphaVantageService {
      * @param {boolean} forceRefresh - 是否强制刷新缓存
      * @returns {Promise<Object>} 期权数据
      */
-    async getOptionsData(symbol, forceRefresh = false) {
+    async getOptionsData(symbol, forceRefresh = false, date = null) {
         const cacheKey = `options_${symbol}`;
         
         if (!forceRefresh) {
@@ -265,7 +265,12 @@ class AlphaVantageService {
         }
 
         try {
-            console.log(`从API获取 ${symbol} 期权数据`);
+            if (date) {
+                console.log(`从API获取 ${symbol} ${date} 历史期权数据`);
+            } else {
+                console.log(`从API获取 ${symbol} 最近交易日期权数据`);
+            }
+            
             const url = `${this.baseUrl}/query`;
             const params = {
                 function: 'HISTORICAL_OPTIONS',
@@ -273,6 +278,12 @@ class AlphaVantageService {
                 datatype: 'json',
                 apikey: this.apiKey
             };
+            
+            // 如果指定了日期，添加 date 参数
+            // 如果没有指定日期，HISTORICAL_OPTIONS会返回最近交易日的数据
+            if (date) {
+                params.date = date;
+            }
 
             const response = await axios.get(url, {
                 params,
@@ -290,13 +301,23 @@ class AlphaVantageService {
                 throw new Error(`AlphaVantage API限制: ${data['Note']}`);
             }
 
-            // 检查数据格式
-            if (!data.data || !Array.isArray(data.data)) {
+            // 检查数据格式 - AlphaVantage HISTORICAL_OPTIONS API 返回的格式
+            console.log(`${symbol} API响应数据结构:`, Object.keys(data));
+            
+            // AlphaVantage HISTORICAL_OPTIONS API 返回的数据结构是按日期组织的
+            if (!data || typeof data !== 'object') {
                 throw new Error(`期权数据格式不正确`);
             }
 
+            // 解析期权数据
+            const optionsArray = this.parseHistoricalOptionsData(data, symbol);
+            
+            if (optionsArray.length === 0) {
+                throw new Error(`未找到 ${symbol} 的期权数据`);
+            }
+
             // 处理期权数据（包含HV计算）
-            const processedData = await this.processOptionsData(data.data, symbol);
+            const processedData = await this.processOptionsData(optionsArray, symbol);
 
             // 缓存数据
             this.setCachedData(cacheKey, processedData);
@@ -308,6 +329,151 @@ class AlphaVantageService {
             
             // 如果API失败，返回空数组，让调用方决定是否使用备选数据
             throw error;
+        }
+    }
+
+    /**
+     * 解析HISTORICAL_OPTIONS API返回的数据
+     * @param {Object} data - API返回的原始数据
+     * @param {string} symbol - 股票代码
+     * @returns {Array} 期权数组
+     */
+    parseHistoricalOptionsData(data, symbol) {
+        const optionsArray = [];
+        
+        try {
+            // 检查是否为demo API key的信息响应
+            if (data.Information && data.Information.includes('demo')) {
+                console.log(`${symbol} 检测到demo API key，无法获取真实期权数据`);
+                return [];
+            }
+            
+            // 检查 HISTORICAL_OPTIONS API 数据格式
+            // 有日期时的格式：{ "endpoint": "Historical Options", "message": "success", "data": [...] }
+            // 无日期时的格式（最近交易日）：{ "data": [...] }
+            let optionsDataArray = [];
+            
+            if (data.endpoint === "Historical Options" && data.data && Array.isArray(data.data)) {
+                console.log(`${symbol} 使用 HISTORICAL_OPTIONS 数据格式`);
+                optionsDataArray = data.data;
+            } else if (data.data && Array.isArray(data.data)) {
+                console.log(`${symbol} 使用 HISTORICAL_OPTIONS 最近交易日数据格式`);
+                optionsDataArray = data.data;
+            } else {
+                console.log(`${symbol} 数据格式不匹配，尝试检查其他格式...`);
+                console.log(`${symbol} API响应数据结构:`, Object.keys(data));
+                return [];
+            }
+            
+            if (optionsDataArray.length > 0) {
+                
+                // 调试：打印前几个期权的原始数据
+                console.log(`${symbol} 原始期权数据示例（前3个）:`);
+                for (let i = 0; i < Math.min(3, optionsDataArray.length); i++) {
+                    const option = optionsDataArray[i];
+                    console.log(`期权 ${i + 1}:`, {
+                        contractID: option.contractID,
+                        implied_volatility: option.implied_volatility,
+                        implied_volatility_type: typeof option.implied_volatility,
+                        strike: option.strike,
+                        expiration: option.expiration,
+                        type: option.type
+                    });
+                }
+                
+                optionsDataArray.forEach(option => {
+                    // 确保必需字段存在
+                    if (option.contractID && option.expiration && option.strike && option.type) {
+                        // 详细的IV解析调试
+                        const rawIV = option.implied_volatility;
+                        const parsedFloat = parseFloat(rawIV);
+                        const finalIV = parsedFloat || 0;
+                        
+                        // 调试：对前几个期权记录IV解析过程
+                        if (optionsArray.length < 5) {
+                            console.log(`解析期权 ${optionsArray.length + 1}:`);
+                            console.log(`  - 原始IV值: "${rawIV}" (类型: ${typeof rawIV})`);
+                            console.log(`  - parseFloat结果: ${parsedFloat} (类型: ${typeof parsedFloat})`);
+                            console.log(`  - 最终IV值: ${finalIV} (类型: ${typeof finalIV})`);
+                            console.log(`  - isNaN(parsedFloat): ${isNaN(parsedFloat)}`);
+                        }
+                        
+                        optionsArray.push({
+                            contractID: option.contractID,
+                            symbol: option.symbol || symbol,
+                            expiration: option.expiration,
+                            strike: parseFloat(option.strike),
+                            type: option.type.toLowerCase(), // 标准化为小写
+                            last_price: parseFloat(option.last) || 0,
+                            mark: parseFloat(option.mark) || 0,
+                            bid: parseFloat(option.bid) || 0,
+                            ask: parseFloat(option.ask) || 0,
+                            volume: parseInt(option.volume) || 0,
+                            open_interest: parseInt(option.open_interest) || 0,
+                            implied_volatility: finalIV,
+                            delta: parseFloat(option.delta) || 0,
+                            gamma: parseFloat(option.gamma) || 0,
+                            theta: parseFloat(option.theta) || 0,
+                            vega: parseFloat(option.vega) || 0,
+                            rho: parseFloat(option.rho) || 0,
+                            date: option.date
+                        });
+                    }
+                });
+                
+                console.log(`${symbol} 解析出 ${optionsArray.length} 个期权合约`);
+                return optionsArray;
+            }
+            
+            // 回退到旧的按日期分组的格式（如果新格式不可用）
+            console.log(`${symbol} 尝试解析按日期分组的期权数据格式`);
+            
+            // 遍历所有日期的期权数据
+            Object.keys(data).forEach(date => {
+                // 跳过元数据字段
+                if (date.includes('Information') || date.includes('Symbol') || date.includes('Last Refreshed') ||
+                    date === 'endpoint' || date === 'message' || date === 'data') {
+                    return;
+                }
+                
+                const dayOptions = data[date];
+                
+                // 检查这一天是否有期权数据
+                if (Array.isArray(dayOptions)) {
+                    dayOptions.forEach(option => {
+                        // 确保必需字段存在
+                        if (option.contractID && option.expiration && option.strike && option.type) {
+                            optionsArray.push({
+                                contractID: option.contractID,
+                                symbol: option.symbol || symbol,
+                                expiration: option.expiration,
+                                strike: parseFloat(option.strike),
+                                type: option.type.toLowerCase(), // 标准化为小写
+                                last_price: parseFloat(option.last) || 0,
+                                mark: parseFloat(option.mark) || 0,
+                                bid: parseFloat(option.bid) || 0,
+                                ask: parseFloat(option.ask) || 0,
+                                volume: parseInt(option.volume) || 0,
+                                open_interest: parseInt(option.open_interest) || 0,
+                                implied_volatility: parseFloat(option.implied_volatility) || 0,
+                                delta: parseFloat(option.delta) || 0,
+                                gamma: parseFloat(option.gamma) || 0,
+                                theta: parseFloat(option.theta) || 0,
+                                vega: parseFloat(option.vega) || 0,
+                                rho: parseFloat(option.rho) || 0,
+                                date: date
+                            });
+                        }
+                    });
+                }
+            });
+            
+            console.log(`${symbol} 解析出 ${optionsArray.length} 个期权合约`);
+            return optionsArray;
+            
+        } catch (error) {
+            console.error(`解析 ${symbol} 期权数据失败:`, error.message);
+            return [];
         }
     }
 
@@ -328,10 +494,11 @@ class AlphaVantageService {
             const currentDate = new Date();
             const daysToExpiry = Math.ceil((expirationDate - currentDate) / (1000 * 60 * 60 * 24));
             
-            // 🔥 重要修复：跳过已过期的期权
+            // 注意：后台基准数据更新时不过滤任何期权，前台显示时才过滤
+            // 这里保留过期期权的调试信息，但不跳过处理
             if (daysToExpiry <= 0) {
-                console.log(`跳过已过期期权: ${option.contractID || option.symbol} 到期日: ${option.expiration} (到期天数: ${daysToExpiry})`);
-                return; // 跳过这个期权
+                // console.log(`过期期权: ${option.contractID || option.symbol} 到期日: ${option.expiration} (到期天数: ${daysToExpiry})`);
+                // 不再跳过，继续处理
             }
             
             const hvPeriod = this.getHVCalculationPeriod(daysToExpiry);

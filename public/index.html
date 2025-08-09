@@ -51,6 +51,56 @@
             </button>
         </div>
 
+        <!-- 管理面板 -->
+        <div class="admin-panel">
+            <div class="admin-section">
+                <h3>📈 数据管理</h3>
+                <div class="admin-controls">
+                    <div class="benchmark-status">
+                        <div id="benchmarkStatus" class="status-indicator">正在检查基准数据状态...</div>
+                        <div id="benchmarkInfo" class="benchmark-info"></div>
+                    </div>
+                    
+                    <div class="admin-buttons">
+                        <button id="updateNVDABtn" class="admin-btn nvda-btn">
+                            <span>🚀 更新NVDA半年基准</span>
+                        </button>
+                        <button id="viewBenchmarkBtn" class="admin-btn view-btn">
+                            <span>📊 查看NVDA基准数据</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 更新进度面板 -->
+        <div id="updateProgressPanel" class="progress-panel" style="display: none;">
+            <div class="progress-header">
+                <h3>📊 历史基准数据更新进度</h3>
+                <button id="closeProgressBtn" class="close-btn">×</button>
+            </div>
+            <div class="progress-content">
+                <div class="progress-bar-container">
+                    <div id="progressBar" class="progress-bar">
+                        <div id="progressFill" class="progress-fill"></div>
+                    </div>
+                    <div id="progressText" class="progress-text">准备开始...</div>
+                </div>
+                <div id="progressLog" class="progress-log"></div>
+            </div>
+        </div>
+
+        <!-- 基准数据查看面板 -->
+        <div id="benchmarkViewPanel" class="benchmark-panel" style="display: none;">
+            <div class="benchmark-header">
+                <h3>📊 NVDA半年基准数据详情</h3>
+                <button id="closeBenchmarkBtn" class="close-btn">×</button>
+            </div>
+            <div id="benchmarkContent" class="benchmark-content">
+                <div class="loading">正在加载基准数据...</div>
+            </div>
+        </div>
+
         <!-- 加载指示器 -->
         <div id="loadingIndicator" class="loading-indicator">
             <div class="spinner"></div>

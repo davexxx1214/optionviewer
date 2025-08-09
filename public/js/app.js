@@ -655,4 +655,461 @@ function updateHVCacheIndicator(cacheStats) {
         indicator.classList.add('fallback');
         indicator.title = `缓存日期：${cacheStats.date}，今日：${today}`;
     }
-} 
+}
+
+// =================== 历史基准数据管理功能 ===================
+
+// 历史基准数据管理状态
+const benchmarkState = {
+    isUpdating: false,
+    eventSource: null,
+    updateResult: null
+};
+
+// 初始化基准数据管理功能
+function initializeBenchmarkManagement() {
+    // 添加事件监听器
+    const updateNVDABtn = document.getElementById('updateNVDABtn');
+    const viewBtn = document.getElementById('viewBenchmarkBtn');
+    const closeProgressBtn = document.getElementById('closeProgressBtn');
+    const closeBenchmarkBtn = document.getElementById('closeBenchmarkBtn');
+
+    if (updateNVDABtn) updateNVDABtn.addEventListener('click', handleUpdateNVDABenchmark);
+    if (viewBtn) viewBtn.addEventListener('click', handleViewNVDABenchmark);
+    if (closeProgressBtn) closeProgressBtn.addEventListener('click', closeProgressPanel);
+    if (closeBenchmarkBtn) closeBenchmarkBtn.addEventListener('click', closeBenchmarkPanel);
+
+    // 加载基准数据状态
+    loadBenchmarkStatus();
+}
+
+// 加载基准数据状态
+async function loadBenchmarkStatus() {
+    try {
+        const response = await fetch('/api/benchmark/nvda/data');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            updateBenchmarkStatusDisplay({
+                hasData: true,
+                lastUpdated: result.data.lastUpdated,
+                message: `NVDA半年基准数据 | 分析了${result.data.dataPoints}个交易日 | 总样本数: ${result.data.totalSamples}`
+            });
+        } else {
+            updateBenchmarkStatusDisplay({
+                hasData: false,
+                message: '没有NVDA基准数据，请先更新'
+            });
+        }
+    } catch (error) {
+        console.error('加载NVDA基准数据状态失败:', error);
+        updateBenchmarkStatusDisplay({
+            hasData: false,
+            error: error.message,
+            message: '无法连接到服务器'
+        });
+    }
+}
+
+// 更新基准数据状态显示
+function updateBenchmarkStatusDisplay(status) {
+    const statusIndicator = document.getElementById('benchmarkStatus');
+    const benchmarkInfo = document.getElementById('benchmarkInfo');
+    
+    if (!statusIndicator || !benchmarkInfo) return;
+
+    // 清除旧的状态类
+    statusIndicator.className = 'status-indicator';
+    
+    if (status.hasData) {
+        statusIndicator.classList.add('success');
+        statusIndicator.textContent = '✅ 已有真实基准数据';
+        
+        const lastUpdated = new Date(status.lastUpdated).toLocaleString('zh-CN');
+        benchmarkInfo.textContent = `${status.message} | 最后更新: ${lastUpdated}`;
+    } else if (status.error) {
+        statusIndicator.classList.add('error');
+        statusIndicator.textContent = '❌ 基准数据状态异常';
+        benchmarkInfo.textContent = status.message || status.error;
+    } else {
+        statusIndicator.classList.add('loading');
+        statusIndicator.textContent = '⚠️ 使用Mock基准数据';
+        benchmarkInfo.textContent = status.message || '建议更新为真实数据';
+    }
+}
+
+
+
+// 处理更新进度
+function handleUpdateProgress(data) {
+    switch (data.type) {
+        case 'start':
+            updateProgressBar(0, '开始更新...');
+            addLogEntry('开始更新历史基准数据...', 'info');
+            break;
+            
+        case 'progress': {
+            // 处理两种不同的进度数据格式
+            let percentage, progressText;
+            
+            if (data.current !== undefined && data.total !== undefined) {
+                // 通用基准更新格式 (current/total)
+                percentage = Math.round((data.current / data.total) * 100);
+                progressText = `处理中 ${data.current}/${data.total}: ${data.symbol || ''}`;
+                
+                if (data.status === 'error') {
+                    addLogEntry(`❌ ${data.symbol}: ${data.error}`, 'error');
+                } else {
+                    addLogEntry(`🔄 ${data.symbol}: 正在处理...`, 'info');
+                }
+            } else if (data.progress !== undefined) {
+                // NVDA特定格式 (progress 百分比)
+                percentage = data.progress;
+                progressText = data.step || `处理中 ${data.stock || 'NVDA'}...`;
+                addLogEntry(`📊 ${data.step || '处理中'}`, 'info');
+            } else {
+                // 通用进度
+                percentage = 50; // 默认进度
+                progressText = data.message || '处理中...';
+                addLogEntry(data.message || '处理中...', 'info');
+            }
+            
+            updateProgressBar(percentage, progressText);
+            break;
+        }
+            
+        case 'complete':
+            updateProgressBar(100, '更新完成！');
+            benchmarkState.updateResult = data.result;
+            
+            addLogEntry(`\n=== 更新完成 ===`, 'info');
+            
+            if (data.result) {
+                if (data.result.success !== undefined && data.result.total !== undefined) {
+                    // 通用基准更新结果
+                    addLogEntry(`成功: ${data.result.success}/${data.result.total} (${data.result.successRate}%)`, 'success');
+                    addLogEntry(`失败: ${data.result.errors}`, data.result.errors > 0 ? 'warning' : 'info');
+                    
+                    if (data.result.errors > 0) {
+                        addLogEntry(`\n失败列表:`, 'warning');
+                        data.result.errors.forEach(error => {
+                            addLogEntry(`${error.symbol}: ${error.error}`, 'error');
+                        });
+                    }
+                } else {
+                    // NVDA特定结果
+                    addLogEntry(`✅ NVDA 基准数据计算完成`, 'success');
+                    addLogEntry(`分析窗口: ${data.result.analysisWindow || 126} 个交易日`, 'info');
+                    addLogEntry(`处理天数: ${data.result.dataPoints || 0}`, 'info');
+                    if (data.result.benchmarks) {
+                        Object.keys(data.result.benchmarks).forEach(category => {
+                            const benchmark = data.result.benchmarks[category];
+                            addLogEntry(`${category}: 平均IV=${(benchmark.averageIV || 0).toFixed(4)}, 样本数=${benchmark.sampleCount || 0}`, 'info');
+                        });
+                    }
+                }
+            } else {
+                addLogEntry('✅ 更新完成', 'success');
+            }
+            
+            handleUpdateComplete(data);
+            break;
+            
+        case 'error':
+            updateProgressBar(0, '更新失败');
+            addLogEntry(`❌ 更新失败: ${data.error || data.message || '未知错误'}`, 'error');
+            handleUpdateComplete(data);
+            break;
+    }
+}
+
+// 更新进度条
+function updateProgressBar(percentage, text) {
+    const progressBar = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    
+    if (progressBar) progressBar.style.width = `${percentage}%`;
+    if (progressText) progressText.textContent = text;
+}
+
+// 添加日志条目
+function addLogEntry(message, type = 'info') {
+    const progressLog = document.getElementById('progressLog');
+    if (!progressLog) return;
+    
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = document.createElement('div');
+    logEntry.className = `log-entry ${type}`;
+    logEntry.textContent = `[${timestamp}] ${message}`;
+    
+    progressLog.appendChild(logEntry);
+    progressLog.scrollTop = progressLog.scrollHeight;
+}
+
+// 处理更新完成
+function handleUpdateComplete(data) {
+    benchmarkState.isUpdating = false;
+    
+    // 关闭SSE连接
+    if (benchmarkState.eventSource) {
+        benchmarkState.eventSource.close();
+        benchmarkState.eventSource = null;
+    }
+    
+    // 恢复所有更新按钮
+    const updateBtn = document.getElementById('updateBenchmarkBtn');
+    const nvdaBtn = document.getElementById('updateNVDABtn');
+    
+    if (updateBtn) {
+        updateBtn.disabled = false;
+        updateBtn.querySelector('span').textContent = '🔄 更新历史基准数据';
+    }
+    
+    if (nvdaBtn) {
+        nvdaBtn.disabled = false;
+        nvdaBtn.querySelector('span').textContent = '🚀 更新NVDA半年基准';
+    }
+    
+    // 重新加载状态
+    setTimeout(() => {
+        loadBenchmarkStatus();
+    }, 1000);
+    
+    // 根据不同类型显示成功消息
+    if (data.type === 'complete') {
+        if (data.result && data.result.successRate !== undefined && data.result.successRate >= 80) {
+            // 通用基准更新
+            setTimeout(() => {
+                alert(`更新完成！成功率: ${data.result.successRate}%\n\n建议刷新页面以使用新的基准数据。`);
+            }, 2000);
+        } else if (data.result && data.result.symbol === 'NVDA') {
+            // NVDA特定更新
+            setTimeout(() => {
+                alert(`NVDA基准数据计算完成！\n\n处理了 ${data.result.dataPoints || 0} 个交易日\n建议刷新页面以使用新的基准数据。`);
+            }, 2000);
+        }
+    }
+}
+
+// 显示进度面板
+function showProgressPanel(title) {
+    const panel = document.getElementById('updateProgressPanel');
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modalOverlay';
+    
+    document.body.appendChild(overlay);
+    
+    if (panel) {
+        panel.style.display = 'block';
+        
+        // 更新标题（如果提供）
+        if (title) {
+            const header = panel.querySelector('.progress-header h3');
+            if (header) header.textContent = title;
+        }
+        
+        // 重置进度
+        updateProgressBar(0, '准备开始...');
+        const progressLog = document.getElementById('progressLog');
+        if (progressLog) progressLog.innerHTML = '';
+    }
+}
+
+// 关闭进度面板
+function closeProgressPanel() {
+    const panel = document.getElementById('updateProgressPanel');
+    const overlay = document.getElementById('modalOverlay');
+    
+    if (panel) panel.style.display = 'none';
+    if (overlay) overlay.remove();
+    
+    // 如果正在更新，询问是否停止
+    if (benchmarkState.isUpdating) {
+        const confirmStop = confirm('更新正在进行中，确定要关闭窗口吗？\n更新过程将在后台继续...');
+        if (!confirmStop) {
+            showProgressPanel();
+        }
+    }
+}
+
+// 处理查看NVDA基准数据
+async function handleViewNVDABenchmark() {
+    showBenchmarkPanel();
+    
+    try {
+        const response = await fetch('/api/benchmark/nvda/data');
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            displayNVDABenchmarkData(result.data);
+        } else {
+            displayBenchmarkError(result.message || '没有NVDA基准数据');
+        }
+    } catch (error) {
+        console.error('加载NVDA基准数据失败:', error);
+        displayBenchmarkError('加载失败: ' + error.message);
+    }
+}
+
+// 显示NVDA基准数据
+function displayNVDABenchmarkData(data) {
+    const content = document.getElementById('benchmarkContent');
+    if (!content) return;
+    
+    const updateTime = new Date(data.lastUpdated).toLocaleDateString();
+    
+    let html = `
+        <div class="benchmark-summary">
+            <p><strong>股票:</strong> ${data.symbol}</p>
+            <p><strong>分析窗口:</strong> ${data.analysisWindow} 个交易日（约半年）</p>
+            <p><strong>处理天数:</strong> ${data.dataPoints} 天</p>
+            <p><strong>总样本数:</strong> ${data.totalSamples} 个期权合约</p>
+            <p><strong>更新时间:</strong> ${updateTime}</p>
+        </div>
+        
+        <table class="benchmark-table">
+            <thead>
+                <tr>
+                    <th>DTE区间</th>
+                    <th>平均隐含波动率</th>
+                    <th>总样本数</th>
+                    <th>有效IV数</th>
+                    <th>最小IV</th>
+                    <th>最大IV</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    const categories = {
+        'ultra_short': '超短期 (0-20天)',
+        'short': '短期 (21-60天)',
+        'medium': '中期 (61-180天)',
+        'long': '长期 (>180天)'
+    };
+    
+    Object.keys(categories).forEach(category => {
+        const benchmark = data.benchmarks[category];
+        if (benchmark) {
+            html += `
+                <tr>
+                    <td><strong>${categories[category]}</strong></td>
+                    <td>${(benchmark.averageIV * 100).toFixed(2)}%</td>
+                    <td>${benchmark.sampleCount}</td>
+                    <td>${benchmark.validIVCount}</td>
+                    <td>${(benchmark.minIV * 100).toFixed(2)}%</td>
+                    <td>${(benchmark.maxIV * 100).toFixed(2)}%</td>
+                </tr>
+            `;
+        }
+    });
+    
+    html += `
+            </tbody>
+        </table>
+    `;
+    
+    content.innerHTML = html;
+}
+
+// 显示基准数据错误
+function displayBenchmarkError(message) {
+    const content = document.getElementById('benchmarkContent');
+    if (!content) return;
+    
+    content.innerHTML = `
+        <div class="error-message" style="text-align: center; padding: 40px;">
+            <h4>📭 ${message}</h4>
+            <p>点击"更新历史基准数据"按钮生成真实数据</p>
+        </div>
+    `;
+}
+
+// 显示基准数据面板
+function showBenchmarkPanel() {
+    const panel = document.getElementById('benchmarkViewPanel');
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modalOverlay2';
+    
+    document.body.appendChild(overlay);
+    
+    if (panel) {
+        panel.style.display = 'block';
+        const content = document.getElementById('benchmarkContent');
+        if (content) content.innerHTML = '<div class="loading">正在加载基准数据...</div>';
+    }
+}
+
+// 关闭基准数据面板
+function closeBenchmarkPanel() {
+    const panel = document.getElementById('benchmarkViewPanel');
+    const overlay = document.getElementById('modalOverlay2');
+    
+    if (panel) panel.style.display = 'none';
+    if (overlay) overlay.remove();
+}
+
+
+
+// === NVDA专用历史基准更新 ===
+
+// 处理NVDA基准更新
+async function handleUpdateNVDABenchmark() {
+    // 确认操作
+    if (!confirm('确定要更新NVDA半年历史基准数据吗？\n\n⚠️ 这将获取过去126个交易日的逐日数据进行分析，需要大量API调用，大约需要30-60分钟完成。\n\n请确保在网络稳定的环境下进行。')) {
+        return;
+    }
+
+    const updateBtn = document.getElementById('updateNVDABtn');
+    
+    // 禁用按钮并显示进度面板
+    if (updateBtn) {
+        updateBtn.disabled = true;
+        updateBtn.querySelector('span').textContent = '⏳ 计算中...';
+    }
+    
+    // 设置更新状态
+    benchmarkState.isUpdating = true;
+    
+    showProgressPanel('🚀 NVDA历史基准数据计算进度');
+    
+    // 重置进度并设置初始状态
+    updateProgressBar(0, '准备开始NVDA基准计算...');
+    addLogEntry('🚀 开始计算 NVDA 半年历史基准数据...', 'info');
+
+    try {
+        // 创建SSE连接
+        benchmarkState.eventSource = new EventSource('/api/benchmark/nvda/update');
+
+        benchmarkState.eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                handleUpdateProgress(data);
+            } catch (error) {
+                console.error('解析进度数据失败:', error);
+                addLogEntry('⚠️ 进度数据解析失败');
+            }
+        };
+
+        benchmarkState.eventSource.onerror = function(event) {
+            console.error('NVDA基准更新连接错误:', event);
+            addLogEntry('❌ 连接错误，请检查服务器状态');
+            handleUpdateComplete();
+        };
+
+    } catch (error) {
+        console.error('启动NVDA基准更新失败:', error);
+        addLogEntry('❌ 启动失败: ' + error.message);
+        handleUpdateComplete();
+    }
+}
+
+// 初始化时调用基准数据管理功能
+document.addEventListener('DOMContentLoaded', function() {
+    // 延迟初始化，确保DOM完全加载
+    setTimeout(() => {
+        initializeBenchmarkManagement();
+    }, 100);
+}); 
