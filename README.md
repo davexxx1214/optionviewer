@@ -1,13 +1,14 @@
 # 美股期权分析评分系统
 
-一个基于Node.js的美股期权分析评分系统，集成AlphaVantage API获取实时数据，提供智能期权分析和VVI评分。
+一个基于Node.js的美股期权分析评分系统，集成AlphaVantage API获取实时数据，提供基于历史基准的智能期权分析。
 
 ## 核心功能
 
 - **实时数据**: AlphaVantage API集成 (股票价格 + 期权链 + 历史数据)
+- **NVDA历史基准**: 半年126个交易日历史IV基准数据，按DTE区间分组
 - **智能HV分段**: 基于期权剩余天数的分段历史波动率计算
 - **三重过滤**: 流动性/价差/IV合理性过滤机制
-- **VVI评分**: 基于历史基准的期权价值指数 (0-100分)
+- **基准比较**: 当前IV与历史基准IV的比较分析
 - **25只股票**: 美股前20 + 5只中概股支持
 - **现代化UI**: 深色主题，响应式设计
 
@@ -29,11 +30,15 @@ optionviewer/
 ├── routes/api.js          # API路由
 ├── services/
 │   ├── alphavantage.js    # AlphaVantage API服务
+│   ├── nvda-historical-benchmark.js  # NVDA历史基准数据计算
 │   ├── hv-cache.js        # HV缓存管理
 │   └── price-cache.js     # 价格缓存管理
 ├── config/
-│   ├── benchmarks.js      # VVI历史基准 + 分段HV数据
+│   ├── benchmarks.js      # 分段HV数据 + 传统基准
 │   └── filters.js         # 期权过滤器配置
+├── cache/
+│   ├── nvda-historical-benchmarks.json  # NVDA半年历史基准
+│   └── nvda-raw-historical-data.json    # NVDA原始历史数据
 ├── data/
 │   ├── stocks-config.js   # 支持的股票列表
 │   └── mock-data.js       # Mock数据生成逻辑
@@ -55,21 +60,32 @@ optionviewer/
 
 **实现位置**: `config/benchmarks.js` - `getSegmentedHV(symbol, daysToExpiry)`
 
-### 2. VVI评分系统
+### 2. NVDA历史基准系统
 
-**计算公式**:
+**数据计算**:
 ```javascript
-R_current = HV_current / IV_current
-Z_score = (R_current - R_avg) / R_std_dev  
-VVI = 50 + (Z_score × 25)  // 限制在0-100
+// 策略B: 逐日历史期权数据获取
+历史期间: 126个交易日 (半年)
+数据来源: AlphaVantage HISTORICAL_OPTIONS API
+区间划分: 按DTE分为4个区间
+基准计算: 每个区间的平均IV值
 ```
 
-**评分解释**:
-- 80-100分: 🟢 极度低估
-- 65-79分: 🔵 低估  
-- 35-64分: 🟡 正常估值
-- 20-34分: 🟠 高估
-- 0-19分: 🔴 极度高估
+**DTE区间分组**:
+| 区间 | DTE范围 | 用途 |
+|------|---------|------|
+| ultra_short | 0-20天 | 短期期权基准 |
+| short | 21-60天 | 标准月度期权 |
+| medium | 61-180天 | 季度期权 |
+| long | >180天 | LEAPS长期期权 |
+
+**基准比较**:
+```javascript
+ratio = currentIV / benchmarkIV
+if (ratio > 1.2) → "高于历史基准20%+"
+if (ratio < 0.8) → "低于历史基准20%+"
+else → "正常范围"
+```
 
 ### 3. 三重过滤机制
 
@@ -87,8 +103,9 @@ ivSanity: iv > 0.15 && iv < 2.00
 - 期权链: `ANALYTICS_FIXED_WINDOW` 
 - 历史数据: `TIME_SERIES_DAILY_ADJUSTED`
 
-**Mock数据**:
-- VVI历史基准: 25只股票的R_avg, R_std_dev
+**历史基准数据**:
+- NVDA: 126个交易日真实历史IV基准 (按DTE区间)
+- 其他股票: Mock基准数据 (待扩展)
 - 分段HV基准: 每只股票4段HV数据
 - 备选期权数据: API失败时使用
 
@@ -118,26 +135,40 @@ http://localhost:3000
 ```http
 GET /api/options/{symbol}?type={call|put}&days={30|60|90}
 
-响应:
+响应 (NVDA示例):
 {
   "success": true,
   "data": {
     "stock": { 股票信息 },
     "options": [
       {
-        "symbol": "AAPL",
-        "daysToExpiry": 69,
-        "historicalVolatility": "23.02",  // 分段HV
-        "hvPeriod": 60,                   // HV计算周期
-        "impliedVolatility": "29.29",
-        "ivHvRatio": "1.27",
-        "score": 36,                      // VVI评分
+        "symbol": "NVDA",
+        "daysToExpiry": 25,
+        "historicalVolatility": "27.51",  // 分段HV
+        "hvPeriod": 30,                   // HV计算周期
+        "impliedVolatility": "32.45",
+        "ivHvRatio": "1.18",
         "filterStatus": "合格期权",
-        "isQualified": true
+        "isQualified": true,
+        "benchmarkAnalysis": {            // 新增: 基准分析
+          "category": "short",
+          "currentIV": "32.45%",
+          "benchmarkIV": "71.45%", 
+          "ratio": "0.45",
+          "comparison": "low",
+          "sampleCount": 2086
+        }
       }
     ]
   }
 }
+```
+
+### NVDA基准数据管理
+```http
+GET /api/benchmark/nvda/update     # 更新NVDA基准数据 (SSE)
+GET /api/benchmark/nvda/data       # 获取NVDA基准数据
+GET /api/benchmark/nvda/status     # 获取基准状态
 ```
 
 ## 支持的股票
@@ -189,8 +220,9 @@ const HISTORICAL_BENCHMARKS = {
 - 🔄 备选期权数据 (API失败时)
 
 ### 混合计算
-- 🎯 VVI评分: Mock历史基准 + 真实当前HV/IV
+- 🎯 NVDA基准分析: 真实历史IV基准 + 当前IV比较
 - 🎯 分段HV: Mock基准数据 + 基于DTE的智能选择
+- 🎯 其他股票: 传统Mock基准 + 当前HV/IV
 
 ## 开发说明
 
@@ -202,8 +234,11 @@ const HISTORICAL_BENCHMARKS = {
 ### 修改过滤器
 编辑 `config/filters.js` 中的 `FILTER_CONFIG`
 
-### 调整VVI基准
-修改 `config/benchmarks.js` 中对应股票的 `R_avg`, `R_std_dev` 值
+### 更新NVDA基准
+通过 `/api/benchmark/nvda/update` 重新计算历史基准
+
+### 扩展其他股票基准
+参考 `services/nvda-historical-benchmark.js` 实现其他股票的历史基准计算
 
 ## 注意事项
 
@@ -214,17 +249,42 @@ const HISTORICAL_BENCHMARKS = {
 
 ## 版本信息
 
-当前版本: v1.2
+当前版本: v2.0 - 历史基准版
+- ✅ NVDA半年历史基准数据计算 (126个交易日)
+- ✅ 按DTE区间分组的IV基准对比
+- ✅ 真实历史期权数据获取和处理
 - ✅ 分段HV计算系统
-- ✅ VVI评分系统  
 - ✅ 三重过滤机制
 - ✅ 25只股票支持
 - ✅ 现代化UI
 
+## 当前工作状态
+
+**✅ 已完成**:
+1. NVDA历史基准数据系统完整实现
+2. AlphaVantage HISTORICAL_OPTIONS API集成
+3. 策略B: 逐日历史数据获取和IV基准计算
+4. DTE计算修复 (历史日期vs今日日期)
+5. 字段名称兼容性处理 (implied_volatility vs impliedVolatility)
+6. 基准比较分析集成到期权分析流程
+
+**🔄 当前问题**:
+- ~~IV显示为0~~ ✅ 已解决 (字段名称不一致问题)
+- ~~期权被标记为已过期~~ ✅ 已解决 (DTE计算错误)
+- ~~基准数据未保存~~ ✅ 已解决 (saveBenchmarkData参数问题)
+
+**📋 下一步工作**:
+1. 扩展历史基准到其他热门股票 (AAPL, MSFT, TSLA等)
+2. 优化API调用频率控制 (当前75次/分钟限制)
+3. 前端UI增强: 基准分析结果可视化
+4. 添加基准数据的时效性管理 (定期更新)
+5. 实现基准数据的增量更新机制
+
 ---
 
 **💡 AI开发者提示**: 
-- 核心逻辑在 `config/benchmarks.js` 和 `config/filters.js`
-- Mock数据结构已完善，可直接扩展
-- API失败会自动降级，系统稳定性良好
-- 前端使用原生JS，易于理解和修改
+- NVDA基准系统在 `services/nvda-historical-benchmark.js`
+- 基准数据存储在 `cache/nvda-historical-benchmarks.json`
+- 期权分析集成在 `data/mock-data.js` getRealOptionsData()
+- API路由基准数据加载在 `routes/api.js`
+- 可直接复制NVDA模式扩展到其他股票
