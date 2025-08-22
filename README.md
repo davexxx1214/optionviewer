@@ -109,43 +109,57 @@ ivSanity: iv > 0.15 && iv < 2.00
 - 分段HV基准: 每只股票4段HV数据
 - 备选期权数据: API失败时使用
 
-## 核心评分算法：VVI (Volatility Value Index)
+## 核心评分算法：CAS (Composite Attractiveness Score)
 
-本系统的核心是一个量化评分模型，称为VVI（Volatility Value Index），用于评估期权价格的相对价值。分数越高，代表期权的隐含波动率（IV）相对其历史波动率（HV）越低，即期权可能被低估。
+本系统采用全新的CAS（综合吸引力评分）算法，融合波动率价值和投机潜力两个核心要素，为买入看涨期权和卖出看涨期权提供智能评分。
 
-VVI的计算过程分为四个步骤：
+CAS系统寻找交易的"甜蜜点"：既要价格便宜（低隐含波动率），又要具备良好的投机性（高杠杆和合理的成功概率）。
 
-### 1. 获取分段历史波动率 (Segmented HV)
-系统首先会根据期权的剩余到期天数（DTE），从预设的该股票的历史基准数据中，查找对应的历史波动率（HV）。
-- **超短期 (0-20天)**
-- **短期 (21-60天)**
-- **中期 (61-180天)**
-- **长期 (>180天)**
+### 评分构成
 
-### 2. 计算当前HV/IV比率 (R_current)
-使用上一步获取的`分段HV`和期权当前的市场`隐含波动率(IV)`，计算出当前的HV/IV比率。
+#### 1. 波动率价值分 (Score_Vol) [0-100]
+评估期权权利金相对于其历史正常水平是"贵"还是"便宜"。
+
+**计算方法**：
+- 计算波动率比率: `Ratio_Vol = IV / HV`
+- 将比率限制在 [0.7, 2.0] 范围内避免极端值
+- 线性映射到评分: `Score_Vol = (2.0 - clampedRatio) / (2.0 - 0.7) × 100`
+
+当IV远低于HV时（期权"打折出售"），波动率价值分接近100，对买方有利。
+
+#### 2. 投机潜力分 (Score_Spec) [0-100]  
+评估期权的"性价比"，即用给定的成本能撬动多大的潜在收益。
+
+**计算方法**：
+- 计算Delta性价比指数: `Index_Spec = delta / premium`
+- 在同一到期日期权中标准化: `Score_Spec = (当前Index_Spec / 最大Index_Spec) × 100`
+
+这个分数内部融合了杠杆率和行权概率(Delta)，用小钱买到高Delta的期权得分更高。
+
+#### 3. 综合评分计算
+
+**买入看涨期权评分**：
 ```math
-R_{current} = \frac{currentHV}{currentIV}
+Score(Buy Call) = \sqrt{Score\_Vol \times Score\_Spec}
 ```
+使用几何平均数惩罚在任何一个维度上表现极差的选项，寻找更均衡的优选。
 
-### 3. 计算Z-Score
-通过将当前的`R_current`与其历史平均值`R_avg`进行比较，并用其历史标准差`R_std_dev`进行归一化，来计算Z-Score。这可以衡量当前HV/IV比率偏离其历史正常水平的程度。
+**卖出看涨期权评分**：
 ```math
-Z\_Score = \frac{(R_{current} - R_{avg})}{R_{std\_dev}}
+Score(Sell Call) = 100 - Score(Buy Call)
 ```
+根据对称性原则，买方的好机会就是卖方的差机会。
 
-### 4. 计算最终VVI评分
-最后，将Z-Score通过线性转换，映射到一个0-100的分数区间内。
-```math
-VVI = 50 + (Z\_Score \times 25)
-```
-最终得分会被限制在 [0, 100] 的范围内。
+### 评分等级
+- **80-100分**: 极佳机会 (excellent)
+- **65-79分**: 良好机会 (good)  
+- **45-64分**: 一般机会 (average)
+- **0-44分**: 较差机会 (poor)
 
-**完整的VVI计算公式如下：**
-```math
-VVI = 50 + \left( \frac{ \left( \frac{currentHV}{currentIV} \right) - R_{avg} }{ R_{std\_dev} } \right) \times 25
-```
-**实现位置**: `config/benchmarks.js` - `calculateVVI()`
+**实现位置**: `config/cas-scoring.js` - 完整的CAS评分系统
+
+### 旧版VVI系统 (向后兼容)
+系统仍保留原有的VVI（Volatility Value Index）评分算法用于向后兼容，但推荐使用新的CAS系统。
 
 ## 快速开始
 
@@ -188,7 +202,31 @@ GET /api/options/{symbol}?type={call|put}&days={30|60|90}
         "ivHvRatio": "1.18",
         "filterStatus": "合格期权",
         "isQualified": true,
-        "benchmarkAnalysis": {            # 新增: 基准分析
+        "casScoring": {                   # 新增: CAS评分系统
+          "buyCall": {
+            "score": 77,                  # 买入看涨期权综合评分
+            "scoreVol": 59,              # 波动率价值分
+            "scoreSpec": 100,            # 投机潜力分
+            "grade": "good",             # 评分等级
+            "description": "良好买入机会",
+            "details": {
+              "ivHvRatio": "1.18",
+              "deltaPerPremium": "0.0255",
+              "explanation": "波动率分59 × 投机分100 = 77"
+            }
+          },
+          "sellCall": {
+            "score": 23,                 # 卖出看涨期权综合评分
+            "scoreVol": 41,             # 反向波动率价值分
+            "scoreSpec": 0,             # 反向投机潜力分
+            "grade": "poor",            # 评分等级
+            "description": "较差卖出机会",
+            "details": {
+              "explanation": "卖出评分 = 100 - 买入评分(77) = 23"
+            }
+          }
+        },
+        "benchmarkAnalysis": {            # NVDA专用: 基准分析
           "category": "short",
           "currentIV": "32.45%",
           "benchmarkIV": "71.45%", 
@@ -287,7 +325,10 @@ const HISTORICAL_BENCHMARKS = {
 
 ## 版本信息
 
-当前版本: v2.0 - 历史基准版
+当前版本: v3.0 - CAS综合评分版
+- ✅ CAS综合吸引力评分系统 (买入/卖出看涨期权)
+- ✅ 波动率价值分 + 投机潜力分融合算法  
+- ✅ 前端双评分列显示 (买入评分/卖出评分)
 - ✅ NVDA半年历史基准数据计算 (126个交易日)
 - ✅ 按DTE区间分组的IV基准对比
 - ✅ 真实历史期权数据获取和处理
@@ -295,10 +336,20 @@ const HISTORICAL_BENCHMARKS = {
 - ✅ 三重过滤机制
 - ✅ 25只股票支持
 - ✅ 现代化UI
+- ✅ 向后兼容VVI评分系统
 
 ## 当前工作状态
 
-**✅ 已完成**:
+**✅ v3.0新增功能**:
+1. CAS综合吸引力评分算法完整实现
+2. 波动率价值分计算 (IV/HV比率评估)
+3. 投机潜力分计算 (Delta性价比评估)
+4. 买入/卖出看涨期权对称性评分
+5. 前端表格新增双评分列显示
+6. 智能评分等级和评价描述
+7. 详细评分工具提示和计算解释
+
+**✅ 历史功能保持稳定**:
 1. NVDA历史基准数据系统完整实现
 2. AlphaVantage HISTORICAL_OPTIONS API集成
 3. 策略B: 逐日历史数据获取和IV基准计算
@@ -306,23 +357,22 @@ const HISTORICAL_BENCHMARKS = {
 5. 字段名称兼容性处理 (implied_volatility vs impliedVolatility)
 6. 基准比较分析集成到期权分析流程
 
-**🔄 当前问题**:
-- ~~IV显示为0~~ ✅ 已解决 (字段名称不一致问题)
-- ~~期权被标记为已过期~~ ✅ 已解决 (DTE计算错误)
-- ~~基准数据未保存~~ ✅ 已解决 (saveBenchmarkData参数问题)
-
 **📋 下一步工作**:
-1. 扩展历史基准到其他热门股票 (AAPL, MSFT, TSLA等)
-2. 优化API调用频率控制 (当前75次/分钟限制)
-3. 前端UI增强: 基准分析结果可视化
-4. 添加基准数据的时效性管理 (定期更新)
-5. 实现基准数据的增量更新机制
+1. 扩展CAS评分到看跌期权
+2. 扩展历史基准到其他热门股票 (AAPL, MSFT, TSLA等)
+3. 优化API调用频率控制 (当前75次/分钟限制)
+4. 前端UI增强: CAS评分可视化图表
+5. 添加基准数据的时效性管理 (定期更新)
+6. 实现基准数据的增量更新机制
 
 ---
 
 **💡 AI开发者提示**: 
+- CAS评分系统在 `config/cas-scoring.js`
+- 期权过滤和评分在 `config/filters.js`
+- 期权数据处理在 `data/mock-data.js` (真实和模拟数据)
+- 前端表格和评分显示在 `public/js/app.js` 和 `public/index.html`
 - NVDA基准系统在 `services/nvda-historical-benchmark.js`
 - 基准数据存储在 `cache/nvda-historical-benchmarks.json`
-- 期权分析集成在 `data/mock-data.js` getRealOptionsData()
-- API路由基准数据加载在 `routes/api.js`
-- 可直接复制NVDA模式扩展到其他股票
+- API路由在 `routes/api.js`
+- 支持买入/卖出看涨期权评分，暂不支持看跌期权

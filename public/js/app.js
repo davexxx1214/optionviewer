@@ -4,7 +4,7 @@ const appState = {
     selectedOptionType: 'call',
     selectedExpiry: 30,
     optionsData: [],
-    sortColumn: 'score',
+    sortColumn: 'buyCallScore',
     sortDirection: 'desc'
 };
 
@@ -77,7 +77,7 @@ function initializeDropdowns() {
     const optionTypeSelector = document.querySelector('.option-type-selector');
     const optionTypeValue = document.createElement('div');
     optionTypeValue.className = 'selected-value';
-    optionTypeValue.textContent = '买入看涨';
+    optionTypeValue.textContent = '看涨期权';
     optionTypeSelector.insertBefore(optionTypeValue, elements.optionTypeDropdown);
     
     // 到期天数下拉菜单
@@ -272,6 +272,7 @@ function selectStock(stock) {
 // 期权类型变更处理
 function handleOptionTypeChange(value) {
     appState.selectedOptionType = value;
+    // 期权类型现在固定为call，不需要特殊处理
 }
 
 // 到期天数变更处理
@@ -291,7 +292,7 @@ async function analyzeOptions() {
     hideResults();
     
     try {
-        const optionType = appState.selectedOptionType.includes('call') ? 'call' : 'put';
+        const optionType = appState.selectedOptionType; // 现在只处理看涨期权，买入/卖出通过前端展示不同评分
         const response = await fetch(
             `/api/options/${appState.selectedStock.symbol}?type=${optionType}&days=${appState.selectedExpiry}&refresh=true`
         );
@@ -333,7 +334,8 @@ function displayResults(data) {
     elements.stockInfo.textContent = `${data.stock.name} - 当前价格: $${data.stock.price} | 合格期权: ${qualifiedCount}/${totalCount}`;
     elements.updateTime.textContent = `更新时间: ${new Date(data.timestamp).toLocaleString('zh-CN')}`;
     
-    // 应用默认排序（按分数降序）
+    // 应用默认排序（按买入评分降序）
+    appState.sortColumn = 'buyCallScore';
     sortOptionsData();
     updateSortIcons();
     
@@ -358,7 +360,7 @@ function renderOptionsTable(options) {
         
         row.innerHTML = `
             <td>${option.symbol}</td>
-            <td class="filter-status ${option.isQualified ? 'qualified' : 'unqualified'}" title="${getFilterTooltip(option.filters)}">${option.filterStatus || '合格期权'}</td>
+            <td class="filter-status ${option.isQualified ? 'qualified' : 'unqualified'}" title="${getFilterTooltip(option.filters)}">${option.filterStatus || '✓'}</td>
             <td class="${option.daysToExpiry <= 0 ? 'expired-option' : ''}" title="${option.daysToExpiry <= 0 ? '此期权已过期' : ''}">${option.daysToExpiry <= 0 ? '已过期' : option.daysToExpiry}</td>
             <td>$${option.strikePrice}</td>
             <td>$${option.premium}</td>
@@ -372,7 +374,8 @@ function renderOptionsTable(options) {
             <td class="iv-hv-ratio ${getIVHVRatioClass(option.ivHvRatio)}">${option.ivHvRatio || '-'}</td>
             <td class="leverage-ratio ${getLeverageRatioClass(option.leverageRatio)}" title="正股价格/期权价格">${option.leverageRatio || '-'}</td>
             <td class="exercise-probability ${getExerciseProbabilityClass(option.exerciseProbability)}" title="基于Delta值的行权概率">${option.exerciseProbability || '-'}${option.exerciseProbability ? '%' : ''}</td>
-            <td><span class="score ${getScoreClass(option.score)}" title="${getVVITooltip(option)}">${option.score || 0}</span></td>
+            <td><span class="score ${getScoreClass(option.casScoring?.buyCall?.score || 0)}" title="${getCASTooltip(option, 'buy')}">${option.casScoring?.buyCall?.score || 0}</span></td>
+            <td><span class="score ${getScoreClass(option.casScoring?.sellCall?.score || 0)}" title="${getCASTooltip(option, 'sell')}">${option.casScoring?.sellCall?.score || 0}</span></td>
         `;
         elements.optionsTableBody.appendChild(row);
     });
@@ -400,8 +403,19 @@ function handleSort(column) {
 // 排序数据
 function sortOptionsData() {
     appState.optionsData.sort((a, b) => {
-        let aValue = a[appState.sortColumn];
-        let bValue = b[appState.sortColumn];
+        let aValue, bValue;
+        
+        // 特殊处理CAS评分字段
+        if (appState.sortColumn === 'buyCallScore') {
+            aValue = a.casScoring?.buyCall?.score || 0;
+            bValue = b.casScoring?.buyCall?.score || 0;
+        } else if (appState.sortColumn === 'sellCallScore') {
+            aValue = a.casScoring?.sellCall?.score || 0;
+            bValue = b.casScoring?.sellCall?.score || 0;
+        } else {
+            aValue = a[appState.sortColumn];
+            bValue = b[appState.sortColumn];
+        }
         
         // 处理数值类型
         if (typeof aValue === 'string' && !isNaN(parseFloat(aValue))) {
@@ -426,6 +440,8 @@ function updateSortIcons() {
         }
     });
 }
+
+
 
 // 工具函数
 
@@ -579,6 +595,28 @@ function getFilterTooltip(filters) {
     return `流动性过滤: ${filters.liquidity ? '✓' : '✗'} (成交量>${minVolume}, 未平仓>${minOpenInterest})
 价差过滤: ${filters.bidAskSpread ? '✓' : '✗'} (相对价差<${maxSpread}%)
 IV合理性: ${filters.ivSanity ? '✓' : '✗'} (${minIV}%<IV<${maxIV}%)`;
+}
+
+// 获取CAS评分提示信息
+function getCASTooltip(option, strategy = 'buy') {
+    if (!option.isQualified) {
+        return `CAS评分: 0 (不合格期权)`;
+    }
+    
+    if (!option.casScoring) {
+        return `CAS评分: 0 (评分不可用)`;
+    }
+    
+    const scoring = strategy === 'buy' ? option.casScoring.buyCall : option.casScoring.sellCall;
+    const actionText = strategy === 'buy' ? '买入看涨' : '卖出看涨';
+    
+    return `${actionText}评分: ${scoring.score}
+波动率价值分: ${scoring.scoreVol}
+投机潜力分: ${scoring.scoreSpec}
+等级: ${scoring.description}
+使用价格: $${scoring.details.price} (${scoring.details.priceType})
+Delta/价格比: ${scoring.details.deltaPerPremium}
+计算: ${scoring.details.explanation}`;
 }
 
 // 获取VVI评分提示信息

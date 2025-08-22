@@ -1,7 +1,8 @@
 // 导入股票列表配置和AlphaVantage服务
 const { stocksList } = require('./stocks-config');
 const alphaVantageService = require('../services/alphavantage');
-const { applyOptionFilters, calculateOptionVVI } = require('../config/filters');
+const { applyOptionFilters, calculateOptionVVI, calculateOptionCAS } = require('../config/filters');
+const { getScoreGrade, getScoreDescription } = require('../config/cas-scoring');
 
 // 缓存的股票数据
 let cachedStocks = null;
@@ -225,7 +226,33 @@ async function getRealOptionsData(symbol, stockPrice, optionType = null, daysToE
        return formattedOption;
      });
 
-    console.log(`成功获取 ${formattedOptions.length} 个期权合约数据`);
+    // 为所有合格的看涨期权计算CAS评分
+    const callOptions = formattedOptions.filter(opt => opt.type === 'call');
+    callOptions.forEach(option => {
+      const casResult = calculateOptionCAS(option, callOptions, symbol);
+      
+      // 添加CAS评分到期权对象
+      option.casScoring = {
+        buyCall: {
+          score: casResult.buyCall.buyCallScore,
+          scoreVol: casResult.buyCall.scoreVol,
+          scoreSpec: casResult.buyCall.scoreSpec,
+          grade: getScoreGrade(casResult.buyCall.buyCallScore),
+          description: getScoreDescription(casResult.buyCall.buyCallScore, 'buy'),
+          details: casResult.buyCall.details
+        },
+        sellCall: {
+          score: casResult.sellCall.sellCallScore,
+          scoreVol: casResult.sellCall.scoreVol,
+          scoreSpec: casResult.sellCall.scoreSpec,
+          grade: getScoreGrade(casResult.sellCall.sellCallScore),
+          description: getScoreDescription(casResult.sellCall.sellCallScore, 'sell'),
+          details: casResult.sellCall.details
+        }
+      };
+    });
+
+    console.log(`成功获取 ${formattedOptions.length} 个期权合约数据，其中 ${callOptions.length} 个看涨期权已计算CAS评分`);
     return formattedOptions;
     
   } catch (error) {
@@ -393,6 +420,32 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
        filterStatus: filterResult.filterStatus,
        filters: filterResult.filters
     });
+  });
+  
+  // 为所有合格的看涨期权计算CAS评分
+  const callOptions = options.filter(opt => opt.type === 'call');
+  callOptions.forEach(option => {
+    const casResult = calculateOptionCAS(option, callOptions, symbol);
+    
+    // 添加CAS评分到期权对象
+    option.casScoring = {
+      buyCall: {
+        score: casResult.buyCall.buyCallScore,
+        scoreVol: casResult.buyCall.scoreVol,
+        scoreSpec: casResult.buyCall.scoreSpec,
+        grade: getScoreGrade(casResult.buyCall.buyCallScore),
+        description: getScoreDescription(casResult.buyCall.buyCallScore, 'buy'),
+        details: casResult.buyCall.details
+      },
+      sellCall: {
+        score: casResult.sellCall.sellCallScore,
+        scoreVol: casResult.sellCall.scoreVol,
+        scoreSpec: casResult.sellCall.scoreSpec,
+        grade: getScoreGrade(casResult.sellCall.sellCallScore),
+        description: getScoreDescription(casResult.sellCall.sellCallScore, 'sell'),
+        details: casResult.sellCall.details
+      }
+    };
   });
   
   // 按评分排序

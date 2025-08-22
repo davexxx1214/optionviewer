@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { getHistoricalBenchmark, calculateVVI } = require('./benchmarks');
+const { calculateCASScore, getScoreGrade, getScoreDescription } = require('./cas-scoring');
 
 // 期权过滤器配置
 const FILTER_CONFIG = {
@@ -68,8 +69,29 @@ function applyOptionFilters(option) {
   };
 }
 
-// 获取筛选状态描述
+// 获取筛选状态描述（简洁版本）
 function getFilterStatus(filters) {
+  const failedFilters = [];
+  
+  if (!filters.liquidity) {
+    failedFilters.push('流动性');
+  }
+  if (!filters.bidAskSpread) {
+    failedFilters.push('价差');
+  }
+  if (!filters.ivSanity) {
+    failedFilters.push('IV');
+  }
+  
+  if (failedFilters.length === 0) {
+    return '✓';
+  } else {
+    return '✗ ' + failedFilters.join(',');
+  }
+}
+
+// 获取详细筛选状态描述（用于工具提示）
+function getDetailedFilterStatus(filters) {
   const failedFilters = [];
   
   if (!filters.liquidity) {
@@ -89,7 +111,23 @@ function getFilterStatus(filters) {
   }
 }
 
-// 计算期权的VVI评分（仅对合格期权）
+// 计算期权的CAS评分（仅对合格期权）
+function calculateOptionCAS(option, allOptions, symbol) {
+  // 只为合格期权计算CAS
+  if (!option.isQualified) {
+    return {
+      buyCall: { buyCallScore: 0, scoreVol: 0, scoreSpec: 0, details: { explanation: "不合格期权" } },
+      sellCall: { sellCallScore: 0, scoreVol: 0, scoreSpec: 0, details: { explanation: "不合格期权" } }
+    };
+  }
+  
+  // 计算CAS评分
+  const casResult = calculateCASScore(option, allOptions, symbol);
+  
+  return casResult;
+}
+
+// 保留VVI评分函数用于向后兼容
 function calculateOptionVVI(option, symbol) {
   // 只为合格期权计算VVI
   if (!option.isQualified) {
@@ -122,6 +160,8 @@ module.exports = {
   FILTER_CONFIG,
   applyOptionFilters,
   getFilterStatus,
+  getDetailedFilterStatus,
   getFilterConfig,
-  calculateOptionVVI
+  calculateOptionVVI, // 保留用于向后兼容
+  calculateOptionCAS  // 新的CAS评分函数
 }; 

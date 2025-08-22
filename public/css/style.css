@@ -308,13 +308,33 @@ body {
 .options-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 14px;
-    min-width: 1200px;
+    font-size: 13px;
+    min-width: 1250px;
+    table-layout: fixed;
 }
+
+/* 列宽控制 */
+.col-symbol { width: 60px; }
+.col-filter { width: 50px; }
+.col-dte { width: 50px; }
+.col-strike { width: 80px; }
+.col-premium { width: 70px; }
+.col-type { width: 50px; }
+.col-bid { width: 60px; }
+.col-ask { width: 60px; }
+.col-volume { width: 70px; }
+.col-oi { width: 70px; }
+.col-iv { width: 60px; }
+.col-hv { width: 60px; }
+.col-ratio { width: 70px; }
+.col-leverage { width: 60px; }
+.col-prob { width: 60px; }
+.col-buy-score { width: 90px; }
+.col-sell-score { width: 90px; }
 
 .options-table th {
     background: linear-gradient(135deg, #404040 0%, #505050 100%);
-    padding: 16px 12px;
+    padding: 10px 6px;
     text-align: left;
     font-weight: 600;
     color: #ffffff;
@@ -323,6 +343,9 @@ body {
     transition: all 0.2s ease;
     position: relative;
     white-space: nowrap;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .options-table th:hover {
@@ -350,9 +373,13 @@ body {
 }
 
 .options-table td {
-    padding: 14px 12px;
+    padding: 10px 6px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     transition: all 0.2s ease;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .options-table tbody tr:hover {
@@ -430,6 +457,18 @@ body {
     box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
 }
 
+/* 主要评分列高亮 */
+.primary-score-column {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    border: 2px solid rgba(59, 130, 246, 0.3) !important;
+    font-weight: 600 !important;
+}
+
+.options-table th.primary-score-column {
+    background-color: rgba(59, 130, 246, 0.2) !important;
+    color: #2563eb !important;
+}
+
 /* HV相关样式 */
 .hv-value {
     font-weight: 600;
@@ -500,11 +539,13 @@ body {
 /* 筛选状态列样式 */
 .filter-status {
     font-weight: 600;
-    padding: 6px 10px;
-    border-radius: 6px;
+    padding: 4px 6px;
+    border-radius: 4px;
     text-align: center;
-    font-size: 12px;
+    font-size: 13px;
     white-space: nowrap;
+    display: inline-block;
+    min-width: 30px;
 }
 
 .filter-status.qualified {
@@ -517,6 +558,7 @@ body {
     background: rgba(255, 107, 107, 0.2);
     color: #ff6b6b;
     border: 1px solid rgba(255, 107, 107, 0.3);
+    font-size: 10px;
 }
 
 /* 不合格期权行样式 */
