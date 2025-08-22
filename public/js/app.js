@@ -370,7 +370,9 @@ function renderOptionsTable(options) {
             <td class="${getIVClass(option.impliedVolatility)}">${option.impliedVolatility}%</td>
             <td class="hv-value" title="基于${option.hvPeriod || ''}天计算">${option.historicalVolatility || '-'}${option.historicalVolatility ? '%' : ''}</td>
             <td class="iv-hv-ratio ${getIVHVRatioClass(option.ivHvRatio)}">${option.ivHvRatio || '-'}</td>
-                         <td><span class="score ${getScoreClass(option.score)}" title="${getVVITooltip(option)}">${option.score || 0}</span></td>
+            <td class="leverage-ratio ${getLeverageRatioClass(option.leverageRatio)}" title="正股价格/期权价格">${option.leverageRatio || '-'}</td>
+            <td class="exercise-probability ${getExerciseProbabilityClass(option.exerciseProbability)}" title="基于Delta值的行权概率">${option.exerciseProbability || '-'}${option.exerciseProbability ? '%' : ''}</td>
+            <td><span class="score ${getScoreClass(option.score)}" title="${getVVITooltip(option)}">${option.score || 0}</span></td>
         `;
         elements.optionsTableBody.appendChild(row);
     });
@@ -605,6 +607,26 @@ function getVVIInterpretation(score) {
     if (score >= 35) return '正常估值';
     if (score >= 20) return '高估';
     return '极度高估';
+}
+
+// 获取杠杆率样式类
+function getLeverageRatioClass(leverageRatio) {
+    if (!leverageRatio) return '';
+    const ratio = parseFloat(leverageRatio);
+    if (ratio >= 20) return 'leverage-high'; // 高杠杆
+    if (ratio >= 10) return 'leverage-medium'; // 中杠杆
+    if (ratio >= 5) return 'leverage-low'; // 低杠杆
+    return 'leverage-very-low'; // 非常低杠杆
+}
+
+// 获取行权概率样式类
+function getExerciseProbabilityClass(exerciseProbability) {
+    if (!exerciseProbability) return '';
+    const prob = parseFloat(exerciseProbability);
+    if (prob >= 70) return 'exercise-high'; // 高概率
+    if (prob >= 40) return 'exercise-medium'; // 中等概率
+    if (prob >= 20) return 'exercise-low'; // 低概率
+    return 'exercise-very-low'; // 非常低概率
 }
 
 // 加载HV缓存状态

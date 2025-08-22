@@ -251,7 +251,7 @@ class AlphaVantageService {
      * @param {boolean} forceRefresh - 是否强制刷新缓存
      * @returns {Promise<Object>} 期权数据
      */
-    async getOptionsData(symbol, forceRefresh = false, date = null) {
+    async getOptionsData(symbol, forceRefresh = false, date = null, stockPrice = null) {
         const cacheKey = `options_${symbol}`;
         
         if (!forceRefresh) {
@@ -317,7 +317,7 @@ class AlphaVantageService {
             }
 
             // 处理期权数据（包含HV计算）
-            const processedData = await this.processOptionsData(optionsArray, symbol);
+            const processedData = await this.processOptionsData(optionsArray, symbol, stockPrice);
 
             // 缓存数据
             this.setCachedData(cacheKey, processedData);
@@ -483,7 +483,7 @@ class AlphaVantageService {
      * @param {string} symbol - 股票代码
      * @returns {Promise<Array>} 处理后的期权数据
      */
-    async processOptionsData(rawData, symbol) {
+    async processOptionsData(rawData, symbol, stockPrice = null) {
         // 按到期天数分组，为每组计算一次HV
         const expiryGroups = {};
         const processedOptions = [];
@@ -536,13 +536,33 @@ class AlphaVantageService {
         // 第三步：处理每个期权并添加HV数据
         Object.values(expiryGroups).forEach(group => {
             group.options.forEach(option => {
+                // 计算杠杆率和行权概率
+                const delta = parseFloat(option.delta) || 0;
+                const premium = parseFloat(option.mark) || 0;
+                
+                // 杠杆率 = 正股价格 / 期权价格
+                let leverageRatio = null;
+                if (stockPrice && premium > 0) {
+                    leverageRatio = parseFloat((stockPrice / premium).toFixed(2));
+                }
+                
+                // 行权概率 = Delta (对于买入call期权)
+                let exerciseProbability = null;
+                if (option.type === 'call') {
+                    // 对于call期权，Delta就是行权概率
+                    exerciseProbability = parseFloat((delta * 100).toFixed(2)); // 转换为百分比
+                } else {
+                    // 对于put期权，行权概率 = |Delta|
+                    exerciseProbability = parseFloat((Math.abs(delta) * 100).toFixed(2));
+                }
+
                 const processedOption = {
                     contractID: option.contractID,
                     symbol: option.symbol,
                     expiration: option.expiration,
                     daysToExpiry: option.daysToExpiry,
                     strikePrice: parseFloat(option.strike),
-                    premium: parseFloat(option.mark), // 使用mark价格作为权利金
+                    premium: premium, // 使用mark价格作为权利金
                     type: option.type, // 'call' 或 'put'
                     bid: parseFloat(option.bid),
                     ask: parseFloat(option.ask),
@@ -553,13 +573,15 @@ class AlphaVantageService {
                     impliedVolatility: parseFloat(option.implied_volatility),
                     historicalVolatility: group.hv, // 添加计算的HV
                     hvPeriod: group.period, // HV计算周期
-                    delta: parseFloat(option.delta),
+                    delta: delta,
                     gamma: parseFloat(option.gamma),
                     theta: parseFloat(option.theta),
                     vega: parseFloat(option.vega),
                     rho: parseFloat(option.rho),
                     lastPrice: parseFloat(option.last) || 0,
                     date: option.date,
+                    leverageRatio: leverageRatio, // 新增：杠杆率
+                    exerciseProbability: exerciseProbability, // 新增：行权概率
                     score: null // 评分留空，后续计算
                 };
                 

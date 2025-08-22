@@ -141,12 +141,12 @@ const getStocks = getStocksWithRealTimePrices;
 
 
 // 获取真实期权数据
-async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null, benchmarkData = null) {
+async function getRealOptionsData(symbol, stockPrice, optionType = null, daysToExpiry = null, benchmarkData = null) {
   try {
     console.log(`获取 ${symbol} 的真实期权数据...`);
     
-    // 调用 AlphaVantage API 获取期权数据
-    const optionsData = await alphaVantageService.getOptionsData(symbol, true);
+    // 调用 AlphaVantage API 获取期权数据，传递股票价格用于计算杠杆率
+    const optionsData = await alphaVantageService.getOptionsData(symbol, true, null, stockPrice);
     
     // 筛选期权数据
     const filteredOptions = alphaVantageService.filterOptionsData(
@@ -182,6 +182,8 @@ async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null
          rho: option.rho,
          lastPrice: option.lastPrice,
          expiration: option.expiration,
+         leverageRatio: option.leverageRatio, // 杠杆率
+         exerciseProbability: option.exerciseProbability, // 行权概率
          dataSource: 'real-time',
          // 筛选相关字段
          isQualified: filterResult.isQualified,
@@ -236,7 +238,7 @@ async function getRealOptionsData(symbol, optionType = null, daysToExpiry = null
 async function getOptionsData(symbol, stockPrice, optionType, daysToExpiry, benchmarkData = null) {
   try {
     // 首先尝试获取真实期权数据
-    const realOptions = await getRealOptionsData(symbol, optionType, daysToExpiry, benchmarkData);
+    const realOptions = await getRealOptionsData(symbol, stockPrice, optionType, daysToExpiry, benchmarkData);
     
     if (realOptions.length > 0) {
       console.log(`使用 ${symbol} 的真实期权数据`);
@@ -306,14 +308,28 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
     const validDaysForCalculation = Math.max(1, daysToExpiry);
     const annualizedReturn = (premium / stockPrice) * (365 / validDaysForCalculation) * 100;
     
-    // 行权概率（基于moneyness）
+    // 模拟Delta值和计算行权概率
+    let delta;
+    if (isCall) {
+      // Call期权的Delta在0到1之间
+      delta = moneyness > 1 ? 0.6 + (moneyness - 1) * 0.3 : 0.3 + (moneyness - 1) * 0.3;
+      delta = Math.max(0.05, Math.min(0.95, delta));
+    } else {
+      // Put期权的Delta在-1到0之间
+      delta = moneyness < 1 ? -(0.6 + (1 - moneyness) * 0.3) : -(0.3 - (moneyness - 1) * 0.3);
+      delta = Math.max(-0.95, Math.min(-0.05, delta));
+    }
+    
+    // 行权概率 = Delta (转换为百分比)
     let exerciseProbability;
     if (isCall) {
-      exerciseProbability = moneyness > 1 ? 60 + (moneyness - 1) * 40 : 40 - (1 - moneyness) * 30;
+      exerciseProbability = parseFloat((delta * 100).toFixed(2));
     } else {
-      exerciseProbability = moneyness < 1 ? 60 + (1 - moneyness) * 40 : 40 - (moneyness - 1) * 30;
+      exerciseProbability = parseFloat((Math.abs(delta) * 100).toFixed(2));
     }
-    exerciseProbability = Math.max(5, Math.min(95, exerciseProbability));
+    
+    // 杠杆率 = 正股价格 / 期权价格
+    const leverageRatio = parseFloat((stockPrice / premium).toFixed(2));
     
     // IVP (隐含波动率百分位)
     const ivp = Math.random() * 100;
@@ -361,12 +377,14 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
       volume: volume,
       openInterest: openInterest,
       annualizedReturn: Math.round(annualizedReturn * 100) / 100,
-      exerciseProbability: Math.round(exerciseProbability * 100) / 100,
+      exerciseProbability: exerciseProbability, // 行权概率（已经是百分比格式）
       impliedVolatility: iv.toFixed(2), // IV百分比格式
       historicalVolatility: hv.toFixed(2), // HV百分比格式
       hvPeriod: hvPeriod, // HV计算周期
       ivp: Math.round(ivp * 100) / 100,
-             ivHvRatio: ivHvRatio.toFixed(2), // IV/HV比率
+      ivHvRatio: ivHvRatio.toFixed(2), // IV/HV比率
+      delta: delta, // Delta值
+      leverageRatio: leverageRatio, // 杠杆率
       price: Math.round(premium * 100) / 100,
              earningsDate: earningsDate.toISOString().split('T')[0],
        optionType: optionType,

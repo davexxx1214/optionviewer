@@ -453,6 +453,48 @@ body {
     color: #ffd43b; /* 黄色：正常范围 */
 }
 
+/* 杠杆率样式 */
+.leverage-ratio {
+    font-weight: 600;
+}
+
+.leverage-high {
+    color: #ff6b6b; /* 红色：高杠杆，高风险 */
+}
+
+.leverage-medium {
+    color: #ffa726; /* 橙色：中等杠杆 */
+}
+
+.leverage-low {
+    color: #66bb6a; /* 绿色：低杠杆，相对安全 */
+}
+
+.leverage-very-low {
+    color: #42a5f5; /* 蓝色：非常低杠杆 */
+}
+
+/* 行权概率样式 */
+.exercise-probability {
+    font-weight: 600;
+}
+
+.exercise-high {
+    color: #4caf50; /* 绿色：高概率 */
+}
+
+.exercise-medium {
+    color: #ff9800; /* 橙色：中等概率 */
+}
+
+.exercise-low {
+    color: #f44336; /* 红色：低概率 */
+}
+
+.exercise-very-low {
+    color: #9e9e9e; /* 灰色：非常低概率 */
+}
+
 /* ===== 期权筛选状态样式 ===== */
 
 /* 筛选状态列样式 */

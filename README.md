@@ -109,6 +109,44 @@ ivSanity: iv > 0.15 && iv < 2.00
 - 分段HV基准: 每只股票4段HV数据
 - 备选期权数据: API失败时使用
 
+## 核心评分算法：VVI (Volatility Value Index)
+
+本系统的核心是一个量化评分模型，称为VVI（Volatility Value Index），用于评估期权价格的相对价值。分数越高，代表期权的隐含波动率（IV）相对其历史波动率（HV）越低，即期权可能被低估。
+
+VVI的计算过程分为四个步骤：
+
+### 1. 获取分段历史波动率 (Segmented HV)
+系统首先会根据期权的剩余到期天数（DTE），从预设的该股票的历史基准数据中，查找对应的历史波动率（HV）。
+- **超短期 (0-20天)**
+- **短期 (21-60天)**
+- **中期 (61-180天)**
+- **长期 (>180天)**
+
+### 2. 计算当前HV/IV比率 (R_current)
+使用上一步获取的`分段HV`和期权当前的市场`隐含波动率(IV)`，计算出当前的HV/IV比率。
+```math
+R_{current} = \frac{currentHV}{currentIV}
+```
+
+### 3. 计算Z-Score
+通过将当前的`R_current`与其历史平均值`R_avg`进行比较，并用其历史标准差`R_std_dev`进行归一化，来计算Z-Score。这可以衡量当前HV/IV比率偏离其历史正常水平的程度。
+```math
+Z\_Score = \frac{(R_{current} - R_{avg})}{R_{std\_dev}}
+```
+
+### 4. 计算最终VVI评分
+最后，将Z-Score通过线性转换，映射到一个0-100的分数区间内。
+```math
+VVI = 50 + (Z\_Score \times 25)
+```
+最终得分会被限制在 [0, 100] 的范围内。
+
+**完整的VVI计算公式如下：**
+```math
+VVI = 50 + \left( \frac{ \left( \frac{currentHV}{currentIV} \right) - R_{avg} }{ R_{std\_dev} } \right) \times 25
+```
+**实现位置**: `config/benchmarks.js` - `calculateVVI()`
+
 ## 快速开始
 
 ### 1. 环境配置
@@ -144,13 +182,13 @@ GET /api/options/{symbol}?type={call|put}&days={30|60|90}
       {
         "symbol": "NVDA",
         "daysToExpiry": 25,
-        "historicalVolatility": "27.51",  // 分段HV
-        "hvPeriod": 30,                   // HV计算周期
+        "historicalVolatility": "27.51",  # 分段HV
+        "hvPeriod": 30,                   # HV计算周期
         "impliedVolatility": "32.45",
         "ivHvRatio": "1.18",
         "filterStatus": "合格期权",
         "isQualified": true,
-        "benchmarkAnalysis": {            // 新增: 基准分析
+        "benchmarkAnalysis": {            # 新增: 基准分析
           "category": "short",
           "currentIV": "32.45%",
           "benchmarkIV": "71.45%", 
