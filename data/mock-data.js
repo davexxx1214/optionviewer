@@ -130,7 +130,8 @@ async function refreshStockCache(symbol, priceData = null) {
         volume: newPriceData.volume,
         timestamp: newPriceData.timestamp,
         lastUpdated: newPriceData.lastUpdated,
-        isRealTime: !newPriceData.fallback
+        isRealTime: !newPriceData.fallback,
+        dataSource: newPriceData.dataSource || (newPriceData.fallback ? 'fallback' : 'api')
       };
     }
   }

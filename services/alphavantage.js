@@ -40,6 +40,105 @@ class AlphaVantageService {
         try {
             console.log(`从API获取 ${symbol} 价格数据`);
             const cacheKey = `price_${symbol}`;
+            
+            // 优先尝试获取每日数据（通常有最新的收盘价）
+            let priceData = await this.tryGetDailyPrice(symbol);
+            
+            // 如果每日数据获取失败，回退到5分钟内日数据
+            if (!priceData) {
+                console.log(`每日数据获取失败，尝试5分钟内日数据 for ${symbol}`);
+                priceData = await this.tryGetIntradayPrice(symbol);
+            }
+            
+            if (!priceData) {
+                throw new Error(`无法获取 ${symbol} 的价格数据`);
+            }
+
+            // 缓存数据到内存（5分钟缓存）
+            this.setCachedData(cacheKey, priceData);
+            
+            // 缓存数据到天级缓存
+            await priceCacheManager.setCachedPrice(symbol, priceData);
+            
+            return priceData;
+
+        } catch (error) {
+            console.error(`获取 ${symbol} 价格失败:`, error.message);
+            
+            // 如果API失败，返回模拟数据作为备选
+            return this.getFallbackPrice(symbol);
+        }
+    }
+
+    /**
+     * 尝试获取每日价格数据
+     * @param {string} symbol - 股票代码
+     * @returns {Promise<Object|null>} 价格数据或null
+     */
+    async tryGetDailyPrice(symbol) {
+        try {
+            const url = `${this.baseUrl}/query`;
+            const params = {
+                function: 'TIME_SERIES_DAILY',
+                symbol: symbol,
+                outputsize: 'compact',
+                datatype: 'json',
+                apikey: this.apiKey
+            };
+
+            const response = await axios.get(url, {
+                params,
+                timeout: this.timeout
+            });
+
+            const data = response.data;
+
+            // 检查是否有错误
+            if (data['Error Message'] || data['Note']) {
+                console.log(`每日数据API错误: ${data['Error Message'] || data['Note']}`);
+                return null;
+            }
+
+            // 提取每日价格数据
+            const timeSeries = data['Time Series (Daily)'];
+            if (!timeSeries || Object.keys(timeSeries).length === 0) {
+                console.log(`未找到 ${symbol} 的每日时间序列数据`);
+                return null;
+            }
+
+            // 获取最新的交易日数据
+            const dates = Object.keys(timeSeries).sort((a, b) => b.localeCompare(a));
+            const latestDate = dates[0];
+            const latestData = timeSeries[latestDate];
+
+            const priceData = {
+                symbol: symbol,
+                price: parseFloat(latestData['4. close']),
+                open: parseFloat(latestData['1. open']),
+                high: parseFloat(latestData['2. high']),
+                low: parseFloat(latestData['3. low']),
+                volume: parseInt(latestData['5. volume']),
+                timestamp: latestDate + ' 16:00:00', // 假设美东时间收盘
+                lastUpdated: new Date().toISOString(),
+                dataSource: 'daily'
+            };
+
+            console.log(`✅ 成功获取 ${symbol} 每日价格: $${priceData.price} (${latestDate})`);
+            return priceData;
+
+        } catch (error) {
+            console.log(`每日价格获取失败: ${error.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * 尝试获取5分钟内日价格数据
+     * @param {string} symbol - 股票代码
+     * @returns {Promise<Object|null>} 价格数据或null
+     */
+    async tryGetIntradayPrice(symbol) {
+        try {
             const url = `${this.baseUrl}/query`;
             const params = {
                 function: 'TIME_SERIES_INTRADAY',
@@ -58,18 +157,16 @@ class AlphaVantageService {
             const data = response.data;
 
             // 检查是否有错误
-            if (data['Error Message']) {
-                throw new Error(`AlphaVantage API错误: ${data['Error Message']}`);
-            }
-
-            if (data['Note']) {
-                throw new Error(`AlphaVantage API限制: ${data['Note']}`);
+            if (data['Error Message'] || data['Note']) {
+                console.log(`内日数据API错误: ${data['Error Message'] || data['Note']}`);
+                return null;
             }
 
             // 提取最新价格
             const timeSeries = data['Time Series (5min)'];
-            if (!timeSeries) {
-                throw new Error(`未找到 ${symbol} 的时间序列数据`);
+            if (!timeSeries || Object.keys(timeSeries).length === 0) {
+                console.log(`未找到 ${symbol} 的5分钟时间序列数据`);
+                return null;
             }
 
             // 获取最新的时间戳和价格数据
@@ -85,22 +182,16 @@ class AlphaVantageService {
                 low: parseFloat(latestData['3. low']),
                 volume: parseInt(latestData['5. volume']),
                 timestamp: latestTimestamp,
-                lastUpdated: new Date().toISOString()
+                lastUpdated: new Date().toISOString(),
+                dataSource: 'intraday'
             };
 
-            // 缓存数据到内存（5分钟缓存）
-            this.setCachedData(cacheKey, priceData);
-            
-            // 缓存数据到天级缓存
-            await priceCacheManager.setCachedPrice(symbol, priceData);
-            
+            console.log(`✅ 成功获取 ${symbol} 内日价格: $${priceData.price} (${latestTimestamp})`);
             return priceData;
 
         } catch (error) {
-            console.error(`获取 ${symbol} 价格失败:`, error.message);
-            
-            // 如果API失败，返回模拟数据作为备选
-            return this.getFallbackPrice(symbol);
+            console.log(`内日价格获取失败: ${error.message}`);
+            return null;
         }
     }
 

@@ -301,6 +301,27 @@ async function analyzeOptions() {
         if (result.success) {
             appState.optionsData = result.data.options;
             
+            // 添加详细的调试日志
+            console.log('API返回的股票数据:', result.data.stock);
+            console.log('当前appState中的股票:', appState.selectedStock);
+            
+            // 更新当前选中股票的价格信息（从后端获取的最新价格）
+            if (result.data.stock) {
+                const oldPrice = appState.selectedStock ? appState.selectedStock.price : '未知';
+                appState.selectedStock = result.data.stock;
+                console.log(`股票价格更新: ${appState.selectedStock.symbol} - 从 $${oldPrice} 更新到 $${appState.selectedStock.price}`);
+                console.log(`更新时间: ${appState.selectedStock.lastUpdated}`);
+                
+                // 同时更新本地存储中的股票列表，保持数据一致性
+                const stocksList = JSON.parse(localStorage.getItem('stocksList') || '[]');
+                const stockIndex = stocksList.findIndex(s => s.symbol === result.data.stock.symbol);
+                if (stockIndex !== -1) {
+                    stocksList[stockIndex] = result.data.stock;
+                    localStorage.setItem('stocksList', JSON.stringify(stocksList));
+                    console.log(`本地存储中的${result.data.stock.symbol}价格也已更新`);
+                }
+            }
+            
             // 存储过滤配置到localStorage以便前端使用
             localStorage.setItem('minDailyVolume', result.data.filterConfig?.minDailyVolume || '10');
             localStorage.setItem('minOpenInterest', result.data.filterConfig?.minOpenInterest || '100');
@@ -329,10 +350,83 @@ function displayResults(data) {
     const qualifiedCount = data.options.filter(option => option.isQualified).length;
     const totalCount = data.options.length;
     
+    // 使用appState中的股票信息（确保是最新更新的价格）
+    const currentStock = appState.selectedStock || data.stock;
+    
+    // 调试日志
+    console.log('displayResults - 使用的股票数据:', currentStock);
+    console.log('displayResults - data.stock:', data.stock);
+    console.log('displayResults - appState.selectedStock:', appState.selectedStock);
+    
+    // 提取收盘价日期信息和数据源
+    let priceTypeLabel = '当前价格';
+    
+    if (currentStock.timestamp) {
+        try {
+            // 尝试解析时间戳获取日期
+            let stockDate;
+            if (currentStock.timestamp.includes(' ')) {
+                // 格式如 "2025-08-27 16:00:00" 或 "2025-08-27 19:55:00"
+                stockDate = new Date(currentStock.timestamp);
+            } else {
+                // 格式如 "2025-08-27"
+                stockDate = new Date(currentStock.timestamp + 'T16:00:00');
+            }
+            
+            if (!isNaN(stockDate.getTime())) {
+                const today = new Date();
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                
+                const stockDateStr = stockDate.toDateString();
+                const todayStr = today.toDateString();
+                const yesterdayStr = yesterday.toDateString();
+                
+                if (stockDateStr === todayStr) {
+                    priceTypeLabel = '今日收盘价';
+                } else if (stockDateStr === yesterdayStr) {
+                    priceTypeLabel = '昨日收盘价';
+                } else {
+                    const dateStr = stockDate.toLocaleDateString('zh-CN', {
+                        month: 'numeric',
+                        day: 'numeric'
+                    });
+                    priceTypeLabel = `${dateStr}收盘价`;
+                }
+                
+                // 添加数据源标识
+                if (currentStock.dataSource) {
+                    let sourceLabel;
+                    switch (currentStock.dataSource) {
+                        case 'daily':
+                            sourceLabel = '每日数据';
+                            break;
+                        case 'intraday':
+                            sourceLabel = '实时数据';
+                            break;
+                        case 'api':
+                            sourceLabel = 'API数据';
+                            break;
+                        case 'fallback':
+                            sourceLabel = '模拟数据';
+                            break;
+                        default:
+                            sourceLabel = currentStock.dataSource;
+                    }
+                    priceTypeLabel += ` (${sourceLabel})`;
+                }
+            }
+        } catch (error) {
+            console.log('解析股票时间戳失败:', error);
+        }
+    }
+    
     // 更新标题和信息
-    elements.resultsTitle.textContent = `${data.stock.symbol} 期权分析结果`;
-    elements.stockInfo.textContent = `${data.stock.name} - 当前价格: $${data.stock.price} | 合格期权: ${qualifiedCount}/${totalCount}`;
-    elements.updateTime.textContent = `更新时间: ${new Date(data.timestamp).toLocaleString('zh-CN')}`;
+    elements.resultsTitle.textContent = `${currentStock.symbol} 期权分析结果`;
+    elements.stockInfo.textContent = `${currentStock.name} - ${priceTypeLabel}: $${currentStock.price} | 合格期权: ${qualifiedCount}/${totalCount}`;
+    // 使用股票数据的最后更新时间，如果没有则使用API响应时间
+    const displayTime = currentStock.lastUpdated ? new Date(currentStock.lastUpdated) : new Date(data.timestamp);
+    elements.updateTime.textContent = `更新时间: ${displayTime.toLocaleString('zh-CN')}`;
     
     // 应用默认排序（按买入评分降序）
     appState.sortColumn = 'buyCallScore';
@@ -511,11 +605,11 @@ function updateDataSourceIndicator(dataSource, lastUpdated) {
     
     switch (dataSource) {
         case 'real-time':
-            indicator.textContent = '实时数据';
+            indicator.textContent = '市场数据';
             indicator.classList.add('real-time');
             break;
         case 'cached':
-            indicator.textContent = '实时数据（缓存）';
+            indicator.textContent = '市场数据（缓存）';
             indicator.classList.add('real-time');
             break;
         case 'fallback':
