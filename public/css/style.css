@@ -14,9 +14,9 @@ body {
 }
 
 .container {
-    max-width: 1400px;
+    max-width: 98vw; /* 使用视窗宽度的98% */
     margin: 0 auto;
-    padding: 20px;
+    padding: 15px; /* 减小外边距 */
 }
 
 /* 标题区域 */
@@ -303,39 +303,22 @@ body {
     overflow: hidden;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
     overflow-x: auto;
+    max-height: 70vh; /* 限制表格最大高度 */
+    overflow-y: auto; /* 添加垂直滚动 */
 }
 
 .options-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 13px;
-    min-width: 1250px;
-    table-layout: fixed;
+    font-size: 12px; /* 减小字体 */
+    min-width: 1400px; /* 保持最小宽度但适当调整 */
+    table-layout: fixed; /* 固定表格布局便于控制列宽 */
 }
-
-/* 列宽控制 */
-.col-symbol { width: 60px; }
-.col-filter { width: 50px; }
-.col-dte { width: 50px; }
-.col-strike { width: 80px; }
-.col-premium { width: 70px; }
-.col-type { width: 50px; }
-.col-bid { width: 60px; }
-.col-ask { width: 60px; }
-.col-volume { width: 70px; }
-.col-oi { width: 70px; }
-.col-iv { width: 60px; }
-.col-hv { width: 60px; }
-.col-ratio { width: 70px; }
-.col-leverage { width: 60px; }
-.col-prob { width: 60px; }
-.col-buy-score { width: 90px; }
-.col-sell-score { width: 90px; }
 
 .options-table th {
     background: linear-gradient(135deg, #404040 0%, #505050 100%);
-    padding: 10px 6px;
-    text-align: left;
+    padding: 10px 6px; /* 减小内边距 */
+    text-align: center; /* 居中对齐 */
     font-weight: 600;
     color: #ffffff;
     border-bottom: 2px solid #555555;
@@ -343,9 +326,10 @@ body {
     transition: all 0.2s ease;
     position: relative;
     white-space: nowrap;
-    font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 11px; /* 表头字体更小 */
+    position: sticky;
+    top: 0;
+    z-index: 10;
 }
 
 .options-table th:hover {
@@ -373,13 +357,13 @@ body {
 }
 
 .options-table td {
-    padding: 10px 6px;
+    padding: 8px 4px; /* 减小内边距 */
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     transition: all 0.2s ease;
-    font-size: 12px;
+    text-align: center; /* 居中对齐 */
+    white-space: nowrap; /* 防止文本换行 */
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-overflow: ellipsis; /* 超长文本显示省略号 */
 }
 
 .options-table tbody tr:hover {
@@ -393,6 +377,25 @@ body {
 .options-table tbody tr:nth-child(even):hover {
     background: rgba(77, 171, 247, 0.1);
 }
+
+/* 列宽优化 - 确保所有内容能在一屏显示 */
+.options-table th:nth-child(1), .options-table td:nth-child(1) { width: 6%; } /* 股票代码 */
+.options-table th:nth-child(2), .options-table td:nth-child(2) { width: 7%; } /* 筛选状态 */
+.options-table th:nth-child(3), .options-table td:nth-child(3) { width: 5%; } /* 到期天数 */
+.options-table th:nth-child(4), .options-table td:nth-child(4) { width: 6%; } /* 行权价 */
+.options-table th:nth-child(5), .options-table td:nth-child(5) { width: 6%; } /* 权利金 */
+.options-table th:nth-child(6), .options-table td:nth-child(6) { width: 4%; } /* 类型 */
+.options-table th:nth-child(7), .options-table td:nth-child(7) { width: 5%; } /* 买入报价 */
+.options-table th:nth-child(8), .options-table td:nth-child(8) { width: 5%; } /* 卖出报价 */
+.options-table th:nth-child(9), .options-table td:nth-child(9) { width: 5%; } /* 当日成交 */
+.options-table th:nth-child(10), .options-table td:nth-child(10) { width: 5%; } /* 未平仓 */
+.options-table th:nth-child(11), .options-table td:nth-child(11) { width: 6%; } /* 隐含波动率 */
+.options-table th:nth-child(12), .options-table td:nth-child(12) { width: 6%; } /* 历史波动率 */
+.options-table th:nth-child(13), .options-table td:nth-child(13) { width: 5%; } /* IV/HV比率 */
+.options-table th:nth-child(14), .options-table td:nth-child(14) { width: 5%; } /* 杠杆率 */
+.options-table th:nth-child(15), .options-table td:nth-child(15) { width: 5%; } /* 行权概率 */
+.options-table th:nth-child(16), .options-table td:nth-child(16) { width: 7%; } /* 买入评分 */
+.options-table th:nth-child(17), .options-table td:nth-child(17) { width: 7%; } /* 卖出评分 */
 
 /* 期权类型样式 */
 .option-type {
@@ -418,12 +421,14 @@ body {
 /* VVI评分样式 - 优化版本 */
 .score {
     font-weight: 700;
-    font-size: 16px;
-    padding: 6px 10px;
-    border-radius: 6px;
+    font-size: 12px; /* 减小评分字体 */
+    padding: 4px 6px; /* 减小内边距 */
+    border-radius: 4px;
     text-align: center;
     cursor: help;
     transition: all 0.3s ease;
+    display: inline-block;
+    min-width: 30px; /* 确保最小宽度 */
 }
 
 /* VVI评分等级 */
@@ -539,13 +544,11 @@ body {
 /* 筛选状态列样式 */
 .filter-status {
     font-weight: 600;
-    padding: 4px 6px;
-    border-radius: 4px;
+    padding: 6px 10px;
+    border-radius: 6px;
     text-align: center;
-    font-size: 13px;
+    font-size: 12px;
     white-space: nowrap;
-    display: inline-block;
-    min-width: 30px;
 }
 
 .filter-status.qualified {
@@ -558,7 +561,6 @@ body {
     background: rgba(255, 107, 107, 0.2);
     color: #ff6b6b;
     border: 1px solid rgba(255, 107, 107, 0.3);
-    font-size: 10px;
 }
 
 /* 不合格期权行样式 */
@@ -646,13 +648,18 @@ body {
     }
     
     .options-table {
-        min-width: 1400px;
+        min-width: 1600px; /* 稍微增加以适应更多列 */
+        font-size: 11px; /* 移动端字体更小 */
     }
     
     .options-table th,
     .options-table td {
-        padding: 10px 8px;
-        font-size: 12px;
+        padding: 6px 3px; /* 移动端更紧凑 */
+        font-size: 10px;
+    }
+    
+    .options-table th {
+        font-size: 9px; /* 移动端表头字体最小 */
     }
 }
 

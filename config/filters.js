@@ -69,29 +69,8 @@ function applyOptionFilters(option) {
   };
 }
 
-// 获取筛选状态描述（简洁版本）
+// 获取筛选状态描述
 function getFilterStatus(filters) {
-  const failedFilters = [];
-  
-  if (!filters.liquidity) {
-    failedFilters.push('流动性');
-  }
-  if (!filters.bidAskSpread) {
-    failedFilters.push('价差');
-  }
-  if (!filters.ivSanity) {
-    failedFilters.push('IV');
-  }
-  
-  if (failedFilters.length === 0) {
-    return '✓';
-  } else {
-    return '✗ ' + failedFilters.join(',');
-  }
-}
-
-// 获取详细筛选状态描述（用于工具提示）
-function getDetailedFilterStatus(filters) {
   const failedFilters = [];
   
   if (!filters.liquidity) {
@@ -160,7 +139,6 @@ module.exports = {
   FILTER_CONFIG,
   applyOptionFilters,
   getFilterStatus,
-  getDetailedFilterStatus,
   getFilterConfig,
   calculateOptionVVI, // 保留用于向后兼容
   calculateOptionCAS  // 新的CAS评分函数
