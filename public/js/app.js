@@ -4,7 +4,7 @@ const appState = {
     selectedOptionType: 'call',
     selectedExpiry: 30,
     optionsData: [],
-    sortColumn: 'buyCallScore',
+    sortColumn: 'ccasScore',
     sortDirection: 'desc'
 };
 
@@ -36,6 +36,9 @@ function initializeApp() {
     initializeDropdowns();
     setupEventListeners();
     loadStocksList();
+    
+    // 设置初始排序图标（CCAS评分降序）
+    updateSortIcons();
     
     // 加载HV缓存状态
     loadHVCacheStatus();
@@ -77,7 +80,7 @@ function initializeDropdowns() {
     const optionTypeSelector = document.querySelector('.option-type-selector');
     const optionTypeValue = document.createElement('div');
     optionTypeValue.className = 'selected-value';
-    optionTypeValue.textContent = '看涨期权';
+    optionTypeValue.textContent = '备兑看涨';
     optionTypeSelector.insertBefore(optionTypeValue, elements.optionTypeDropdown);
     
     // 到期天数下拉菜单
@@ -428,8 +431,8 @@ function displayResults(data) {
     const displayTime = currentStock.lastUpdated ? new Date(currentStock.lastUpdated) : new Date(data.timestamp);
     elements.updateTime.textContent = `更新时间: ${displayTime.toLocaleString('zh-CN')}`;
     
-    // 应用默认排序（按买入评分降序）
-    appState.sortColumn = 'buyCallScore';
+    // 应用默认排序（按CCAS评分降序）
+    appState.sortColumn = 'ccasScore';
     sortOptionsData();
     updateSortIcons();
     
@@ -468,8 +471,7 @@ function renderOptionsTable(options) {
             <td class="iv-hv-ratio ${getIVHVRatioClass(option.ivHvRatio)}">${option.ivHvRatio || '-'}</td>
             <td class="leverage-ratio ${getLeverageRatioClass(option.leverageRatio)}" title="正股价格/期权价格">${option.leverageRatio || '-'}</td>
             <td class="exercise-probability ${getExerciseProbabilityClass(option.exerciseProbability)}" title="基于Delta值的行权概率">${option.exerciseProbability || '-'}${option.exerciseProbability ? '%' : ''}</td>
-            <td><span class="score ${getScoreClass(option.casScoring?.buyCall?.score || 0)}" title="${getCASTooltip(option, 'buy')}">${option.casScoring?.buyCall?.score || 0}</span></td>
-            <td><span class="score ${getScoreClass(option.casScoring?.sellCall?.score || 0)}" title="${getCASTooltip(option, 'sell')}">${option.casScoring?.sellCall?.score || 0}</span></td>
+            <td><span class="score ccas-score ${getCCASScoreClass(option.ccasScoring?.score || 0)}" title="${getCCASTooltip(option)}">${option.ccasScoring?.score || 0}</span></td>
         `;
         elements.optionsTableBody.appendChild(row);
     });
@@ -499,13 +501,10 @@ function sortOptionsData() {
     appState.optionsData.sort((a, b) => {
         let aValue, bValue;
         
-        // 特殊处理CAS评分字段
-        if (appState.sortColumn === 'buyCallScore') {
-            aValue = a.casScoring?.buyCall?.score || 0;
-            bValue = b.casScoring?.buyCall?.score || 0;
-        } else if (appState.sortColumn === 'sellCallScore') {
-            aValue = a.casScoring?.sellCall?.score || 0;
-            bValue = b.casScoring?.sellCall?.score || 0;
+        // 特殊处理CCAS评分字段
+        if (appState.sortColumn === 'ccasScore') {
+            aValue = a.ccasScoring?.score || 0;
+            bValue = b.ccasScoring?.score || 0;
         } else {
             aValue = a[appState.sortColumn];
             bValue = b[appState.sortColumn];
@@ -711,6 +710,38 @@ function getCASTooltip(option, strategy = 'buy') {
 使用价格: $${scoring.details.price} (${scoring.details.priceType})
 Delta/价格比: ${scoring.details.deltaPerPremium}
 计算: ${scoring.details.explanation}`;
+}
+
+// 获取CCAS评分样式类
+function getCCASScoreClass(score) {
+    if (score >= 80) return 'ccas-excellent';
+    if (score >= 65) return 'ccas-good';
+    if (score >= 45) return 'ccas-average';
+    return 'ccas-poor';
+}
+
+// 获取CCAS评分提示信息
+function getCCASTooltip(option) {
+    if (!option.ccasScoring) {
+        return 'CCAS评分: 0 (评分不可用)';
+    }
+    
+    const ccas = option.ccasScoring;
+    
+    if (!ccas.passed) {
+        return `CCAS评分: ${ccas.score} (未通过)
+原因: ${ccas.reason}
+潜在收益率: ${ccas.details.potentialGainRatio}
+要求缓冲: ${ccas.details.requiredBuffer}`;
+    }
+    
+    const breakdown = ccas.scoreBreakdown;
+    return `CCAS评分: ${ccas.score} - ${ccas.description}
+权利金收益分: ${breakdown ? breakdown.scoreYield.toFixed(1) : 'N/A'}
+安全边际分: ${breakdown ? breakdown.scoreSafety.toFixed(1) : 'N/A'}
+年化收益率: ${ccas.details.annualizedYield}
+Delta值: ${ccas.details.deltaValue}
+计算: ${ccas.details.explanation}`;
 }
 
 // 获取VVI评分提示信息

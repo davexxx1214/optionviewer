@@ -456,6 +456,48 @@ body {
     border: 2px solid rgba(239, 68, 68, 0.4);
 }
 
+/* CCAS评分专用样式 */
+.ccas-score {
+    font-weight: 700;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    position: relative;
+}
+
+.ccas-excellent {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: #ffffff;
+    border: 2px solid rgba(16, 185, 129, 0.4);
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.ccas-good {
+    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+    color: #ffffff;
+    border: 2px solid rgba(6, 182, 212, 0.4);
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3);
+}
+
+.ccas-average {
+    background: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+    color: #ffffff;
+    border: 2px solid rgba(249, 115, 22, 0.4);
+    box-shadow: 0 2px 8px rgba(249, 115, 22, 0.3);
+}
+
+.ccas-poor {
+    background: linear-gradient(135deg, #e11d48 0%, #be185d 100%);
+    color: #ffffff;
+    border: 2px solid rgba(225, 29, 72, 0.4);
+    box-shadow: 0 2px 8px rgba(225, 29, 72, 0.3);
+}
+
+/* CCAS评分列突出显示 */
+.options-table th[data-sort="ccasScore"] {
+    background-color: rgba(16, 185, 129, 0.1) !important;
+    color: #10b981 !important;
+    font-weight: 700 !important;
+}
+
 /* 评分悬停效果 */
 .score:hover {
     transform: scale(1.05);

@@ -227,9 +227,10 @@ async function getRealOptionsData(symbol, stockPrice, optionType = null, daysToE
        return formattedOption;
      });
 
-    // 为所有合格的看涨期权计算CAS评分
+    // 为所有合格的看涨期权计算CAS评分和CCAS评分
     const callOptions = formattedOptions.filter(opt => opt.type === 'call');
     callOptions.forEach(option => {
+      // 计算原有的CAS评分
       const casResult = calculateOptionCAS(option, callOptions, symbol);
       
       // 添加CAS评分到期权对象
@@ -251,9 +252,30 @@ async function getRealOptionsData(symbol, stockPrice, optionType = null, daysToE
           details: casResult.sellCall.details
         }
       };
+      
+      // 🆕 计算新的CCAS评分 (Covered Call Attractiveness Score)
+      const { calculateCCASScore, getCCASScoreGrade, getCCASScoreDescription } = require('../config/ccas-scoring');
+      const ccasResult = calculateCCASScore({
+        stockPrice: stockPrice,
+        strikePrice: option.strikePrice,
+        dte: option.daysToExpiry,
+        bidPrice: option.bid,
+        delta: option.delta
+      });
+      
+      // 添加CCAS评分到期权对象
+      option.ccasScoring = {
+        score: ccasResult.ccasScore,
+        passed: ccasResult.passed,
+        grade: getCCASScoreGrade(ccasResult.ccasScore),
+        description: getCCASScoreDescription(ccasResult.ccasScore),
+        scoreBreakdown: ccasResult.scoreBreakdown || null,
+        details: ccasResult.details || {},
+        reason: ccasResult.reason || null
+      };
     });
 
-    console.log(`成功获取 ${formattedOptions.length} 个期权合约数据，其中 ${callOptions.length} 个看涨期权已计算CAS评分`);
+    console.log(`成功获取 ${formattedOptions.length} 个期权合约数据，其中 ${callOptions.length} 个看涨期权已计算CAS和CCAS评分`);
     return formattedOptions;
     
   } catch (error) {
@@ -423,9 +445,10 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
     });
   });
   
-  // 为所有合格的看涨期权计算CAS评分
+  // 为所有合格的看涨期权计算CAS评分和CCAS评分
   const callOptions = options.filter(opt => opt.type === 'call');
   callOptions.forEach(option => {
+    // 计算原有的CAS评分
     const casResult = calculateOptionCAS(option, callOptions, symbol);
     
     // 添加CAS评分到期权对象
@@ -446,6 +469,27 @@ function generateOptionData(symbol, stockPrice, optionType, daysToExpiry) {
         description: getScoreDescription(casResult.sellCall.sellCallScore, 'sell'),
         details: casResult.sellCall.details
       }
+    };
+    
+    // 🆕 计算新的CCAS评分 (Covered Call Attractiveness Score)
+    const { calculateCCASScore, getCCASScoreGrade, getCCASScoreDescription } = require('../config/ccas-scoring');
+    const ccasResult = calculateCCASScore({
+      stockPrice: stockPrice,
+      strikePrice: option.strikePrice,
+      dte: option.daysToExpiry,
+      bidPrice: option.bid,
+      delta: option.delta
+    });
+    
+    // 添加CCAS评分到期权对象
+    option.ccasScoring = {
+      score: ccasResult.ccasScore,
+      passed: ccasResult.passed,
+      grade: getCCASScoreGrade(ccasResult.ccasScore),
+      description: getCCASScoreDescription(ccasResult.ccasScore),
+      scoreBreakdown: ccasResult.scoreBreakdown || null,
+      details: ccasResult.details || {},
+      reason: ccasResult.reason || null
     };
   });
   

@@ -26,10 +26,10 @@
             </div>
 
             <div class="input-group">
-                <label for="optionType">期权类型</label>
+                <label for="optionType">策略类型</label>
                 <div class="selector-wrapper option-type-selector">
                     <div class="dropdown" id="optionTypeDropdown">
-                        <div class="dropdown-item" data-value="call">看涨期权 (Call)</div>
+                        <div class="dropdown-item" data-value="call">备兑看涨 (Covered Call)</div>
                     </div>
                 </div>
             </div>
@@ -138,8 +138,7 @@
                             <th class="sortable" data-sort="ivHvRatio">IV/HV比率</th>
                             <th class="sortable" data-sort="leverageRatio">杠杆率</th>
                             <th class="sortable" data-sort="exerciseProbability">行权概率</th>
-                            <th class="sortable" data-sort="buyCallScore">买入评分</th>
-                            <th class="sortable" data-sort="sellCallScore">卖出评分</th>
+                            <th class="sortable" data-sort="ccasScore">CCAS评分</th>
                         </tr>
                     </thead>
                     <tbody id="optionsTableBody">

@@ -1,16 +1,82 @@
-# 美股期权分析评分系统
+# 美股备兑看涨期权分析系统 (CCAS)
 
-一个基于Node.js的美股期权分析评分系统，集成AlphaVantage API获取实时数据，提供基于历史基准的智能期权分析。
+一个专门针对**备兑看涨期权策略 (Covered Call)** 的评分分析系统，基于Node.js构建，集成AlphaVantage API获取实时数据，采用先进的CCAS评分算法为持有股票的投资者筛选最佳的卖出Call合约。
 
 ## 核心功能
 
-- **实时数据**: AlphaVantage API集成 (股票价格 + 期权链 + 历史数据)
-- **NVDA历史基准**: 半年126个交易日历史IV基准数据，按DTE区间分组
-- **智能HV分段**: 基于期权剩余天数的分段历史波动率计算
-- **三重过滤**: 流动性/价差/IV合理性过滤机制
-- **基准比较**: 当前IV与历史基准IV的比较分析
-- **25只股票**: 美股前20 + 5只中概股支持
-- **现代化UI**: 深色主题，响应式设计
+- **🎯 专业备兑策略**: 专门针对 Covered Call 策略设计的评分系统
+- **📊 CCAS评分算法**: 基于利润缓冲、权利金收益和安全边际的综合评分
+- **📡 实时数据**: AlphaVantage API集成 (股票价格 + 期权链 + 历史数据)
+- **🔍 智能过滤**: 三重过滤机制确保期权质量
+- **📈 历史基准**: NVDA半年126个交易日历史IV基准数据
+- **💰 25只股票**: 美股前20 + 5只中概股支持
+- **🌙 现代化UI**: 深色主题，响应式设计
+
+## CCAS评分系统 (Covered Call Attractiveness Score)
+
+CCAS是本系统的核心算法，专门为备兑看涨期权策略设计。一个"最佳"的合约需要在以下三个方面取得平衡：
+
+1. **利润缓冲 (Profit Buffer)**: 股价有足够的上涨空间而不会被立即行权
+2. **权利金收益 (Premium Yield)**: 卖出期权本身能带来可观的年化现金流回报  
+3. **安全边际 (Safety Margin)**: 期权被行权的概率（Delta）相对较低
+
+### 评分流程
+
+#### 步骤 0: 硬性门槛 - 利润缓冲前置过滤器
+淘汰那些行权价离现价太近、几乎没有股价上涨空间的期权。
+
+```javascript
+潜在收益率 = (行权价 / 股价) - 1
+动态缓冲要求 = 0.04 + ((DTE - 8) / (29 - 8)) * (0.12 - 0.04)
+
+如果 潜在收益率 < 动态缓冲要求:
+    CCAS评分 = 0 (直接淘汰)
+```
+
+#### 步骤 1: 权利金收益分 (0-100分)
+量化权利金回报的吸引力，并进行跨期限的标准化比较。
+
+```javascript
+年化收益率 = (Bid价格 / 股价) * (365 / DTE)
+最低收益率 = 5%，满分收益率 = 25%
+权利金收益分 = 线性映射到 0-100分
+```
+
+#### 步骤 2: 安全边际分 (0-100分)  
+量化期权不被行权的概率。Delta 越低，分数越高。
+
+```javascript
+最低风险Delta = 10% (满分)，最高风险Delta = 40% (0分)
+安全边际分 = 反向线性映射到 0-100分
+```
+
+#### 步骤 3: 最终CCAS分数 (0-100分)
+使用几何平均数来平衡高收益和高安全性。
+
+```javascript
+CCAS评分 = √(权利金收益分 × 安全边际分)
+```
+
+### 评分等级
+- **80-100分**: 极佳备兑机会 (excellent)  
+- **65-79分**: 良好备兑机会 (good)
+- **45-64分**: 一般备兑机会 (average)
+- **0-44分**: 较差备兑机会 (poor)
+
+### 实际应用示例
+
+**示例输入**:
+- 股价: $175.97
+- 行权价: $200.00  
+- 到期天数: 22天
+- Bid价格: $2.31
+- Delta: 0.219
+
+**计算过程**:
+1. 潜在收益率: 13.66% > 要求缓冲9.33% ✅ 通过过滤
+2. 权利金收益分: 83.9分 (年化收益率21.78%)
+3. 安全边际分: 60.3分 (Delta 21.9%)
+4. **最终CCAS评分: 71分** (良好备兑机会)
 
 ## 技术架构
 
@@ -18,8 +84,9 @@
 后端: Node.js + Express
 前端: 原生HTML/CSS/JavaScript  
 数据源: AlphaVantage API
-缓存: 5分钟内存缓存
+缓存: 5分钟内存缓存 + HV缓存
 备选: API失败时Mock数据
+核心算法: CCAS评分系统
 ```
 
 ## 项目结构
@@ -34,6 +101,7 @@ optionviewer/
 │   ├── hv-cache.js        # HV缓存管理
 │   └── price-cache.js     # 价格缓存管理
 ├── config/
+│   ├── ccas-scoring.js    # 🆕 CCAS评分算法核心
 │   ├── benchmarks.js      # 分段HV数据 + 传统基准
 │   └── filters.js         # 期权过滤器配置
 ├── cache/
@@ -44,122 +112,6 @@ optionviewer/
 │   └── mock-data.js       # Mock数据生成逻辑
 └── public/                # 前端静态文件
 ```
-
-## 关键技术实现
-
-### 1. 分段历史波动率 (HV)
-
-**基于期权剩余天数(DTE)的智能分段**:
-
-| 分段 | DTE范围 | HV周期 | 用途 |
-|------|---------|--------|------|
-| 超短期 | 0-20天 | 20天 | 短期波动反映当前市况 |
-| 短期 | 21-60天 | 30天 | 平衡波动性与统计有效性 |
-| 中期 | 61-180天 | 60天 | 稳定的波动率估计 |
-| 长期 | >180天 | 180天 | 长期基础资产特征 |
-
-**实现位置**: `config/benchmarks.js` - `getSegmentedHV(symbol, daysToExpiry)`
-
-### 2. NVDA历史基准系统
-
-**数据计算**:
-```javascript
-// 策略B: 逐日历史期权数据获取
-历史期间: 126个交易日 (半年)
-数据来源: AlphaVantage HISTORICAL_OPTIONS API
-区间划分: 按DTE分为4个区间
-基准计算: 每个区间的平均IV值
-```
-
-**DTE区间分组**:
-| 区间 | DTE范围 | 用途 |
-|------|---------|------|
-| ultra_short | 0-20天 | 短期期权基准 |
-| short | 21-60天 | 标准月度期权 |
-| medium | 61-180天 | 季度期权 |
-| long | >180天 | LEAPS长期期权 |
-
-**基准比较**:
-```javascript
-ratio = currentIV / benchmarkIV
-if (ratio > 1.2) → "高于历史基准20%+"
-if (ratio < 0.8) → "低于历史基准20%+"
-else → "正常范围"
-```
-
-### 3. 三重过滤机制
-
-```javascript
-// config/filters.js
-liquidity: volume > 10 && openInterest > 100
-bidAskSpread: (ask - bid) / ask < 0.10
-ivSanity: iv > 0.15 && iv < 2.00
-```
-
-### 4. 数据源管理
-
-**实时数据**:
-- 股票价格: `TIME_SERIES_INTRADAY` (5分钟)
-- 期权链: `ANALYTICS_FIXED_WINDOW` 
-- 历史数据: `TIME_SERIES_DAILY_ADJUSTED`
-
-**历史基准数据**:
-- NVDA: 126个交易日真实历史IV基准 (按DTE区间)
-- 其他股票: Mock基准数据 (待扩展)
-- 分段HV基准: 每只股票4段HV数据
-- 备选期权数据: API失败时使用
-
-## 核心评分算法：CAS (Composite Attractiveness Score)
-
-本系统采用全新的CAS（综合吸引力评分）算法，融合波动率价值和投机潜力两个核心要素，为买入看涨期权和卖出看涨期权提供智能评分。
-
-CAS系统寻找交易的"甜蜜点"：既要价格便宜（低隐含波动率），又要具备良好的投机性（高杠杆和合理的成功概率）。
-
-### 评分构成
-
-#### 1. 波动率价值分 (Score_Vol) [0-100]
-评估期权权利金相对于其历史正常水平是"贵"还是"便宜"。
-
-**计算方法**：
-- 计算波动率比率: `Ratio_Vol = IV / HV`
-- 将比率限制在 [0.7, 2.0] 范围内避免极端值
-- 线性映射到评分: `Score_Vol = (2.0 - clampedRatio) / (2.0 - 0.7) × 100`
-
-当IV远低于HV时（期权"打折出售"），波动率价值分接近100，对买方有利。
-
-#### 2. 投机潜力分 (Score_Spec) [0-100]  
-评估期权的"性价比"，即用给定的成本能撬动多大的潜在收益。
-
-**计算方法**：
-- 计算Delta性价比指数: `Index_Spec = delta / premium`
-- 在同一到期日期权中标准化: `Score_Spec = (当前Index_Spec / 最大Index_Spec) × 100`
-
-这个分数内部融合了杠杆率和行权概率(Delta)，用小钱买到高Delta的期权得分更高。
-
-#### 3. 综合评分计算
-
-**买入看涨期权评分**：
-```math
-Score(Buy Call) = \sqrt{Score\_Vol \times Score\_Spec}
-```
-使用几何平均数惩罚在任何一个维度上表现极差的选项，寻找更均衡的优选。
-
-**卖出看涨期权评分**：
-```math
-Score(Sell Call) = 100 - Score(Buy Call)
-```
-根据对称性原则，买方的好机会就是卖方的差机会。
-
-### 评分等级
-- **80-100分**: 极佳机会 (excellent)
-- **65-79分**: 良好机会 (good)  
-- **45-64分**: 一般机会 (average)
-- **0-44分**: 较差机会 (poor)
-
-**实现位置**: `config/cas-scoring.js` - 完整的CAS评分系统
-
-### 旧版VVI系统 (向后兼容)
-系统仍保留原有的VVI（Volatility Value Index）评分算法用于向后兼容，但推荐使用新的CAS系统。
 
 ## 快速开始
 
@@ -185,9 +137,9 @@ http://localhost:3000
 
 ### 获取期权数据
 ```http
-GET /api/options/{symbol}?type={call|put}&days={30|60|90}
+GET /api/options/{symbol}?type=call&days={30|60|90}
 
-响应 (NVDA示例):
+响应示例 (NVDA):
 {
   "success": true,
   "data": {
@@ -196,37 +148,31 @@ GET /api/options/{symbol}?type={call|put}&days={30|60|90}
       {
         "symbol": "NVDA",
         "daysToExpiry": 25,
-        "historicalVolatility": "27.51",  # 分段HV
-        "hvPeriod": 30,                   # HV计算周期
+        "strikePrice": 200.0,
+        "bid": 2.31,
+        "delta": 0.219,
+        "historicalVolatility": "27.51",
         "impliedVolatility": "32.45",
-        "ivHvRatio": "1.18",
         "filterStatus": "合格期权",
         "isQualified": true,
-        "casScoring": {                   # 新增: CAS评分系统
-          "buyCall": {
-            "score": 77,                  # 买入看涨期权综合评分
-            "scoreVol": 59,              # 波动率价值分
-            "scoreSpec": 100,            # 投机潜力分
-            "grade": "good",             # 评分等级
-            "description": "良好买入机会",
-            "details": {
-              "ivHvRatio": "1.18",
-              "deltaPerPremium": "0.0255",
-              "explanation": "波动率分59 × 投机分100 = 77"
-            }
+        "ccasScoring": {                 # 🆕 CCAS评分系统
+          "score": 71,                   # CCAS综合评分
+          "passed": true,                # 是否通过过滤器
+          "grade": "good",               # 评分等级
+          "description": "良好备兑机会",  # 评分描述
+          "scoreBreakdown": {
+            "scoreYield": 83.9,         # 权利金收益分
+            "scoreSafety": 60.3         # 安全边际分
           },
-          "sellCall": {
-            "score": 23,                 # 卖出看涨期权综合评分
-            "scoreVol": 41,             # 反向波动率价值分
-            "scoreSpec": 0,             # 反向投机潜力分
-            "grade": "poor",            # 评分等级
-            "description": "较差卖出机会",
-            "details": {
-              "explanation": "卖出评分 = 100 - 买入评分(77) = 23"
-            }
+          "details": {
+            "potentialGainRatio": "13.66%",    # 潜在收益率
+            "requiredBuffer": "9.33%",         # 要求缓冲
+            "annualizedYield": "21.78%",       # 年化收益率
+            "deltaValue": "21.9%",             # Delta值
+            "explanation": "权利金收益分83.9 × 安全边际分60.3 = 71"
           }
         },
-        "benchmarkAnalysis": {            # NVDA专用: 基准分析
+        "benchmarkAnalysis": {           # NVDA专用: 基准分析
           "category": "short",
           "currentIV": "32.45%",
           "benchmarkIV": "71.45%", 
@@ -253,11 +199,48 @@ GET /api/benchmark/nvda/status     # 获取基准状态
 
 **中概股5只**: BABA, PDD, NTES, JD, TME
 
+## 关键技术实现
+
+### 1. 分段历史波动率 (HV)
+
+基于期权剩余天数(DTE)的智能分段:
+
+| 分段 | DTE范围 | HV周期 | 用途 |
+|------|---------|--------|------|
+| 超短期 | 0-20天 | 20天 | 短期波动反映当前市况 |
+| 短期 | 21-60天 | 30天 | 平衡波动性与统计有效性 |
+| 中期 | 61-180天 | 60天 | 稳定的波动率估计 |
+| 长期 | >180天 | 180天 | 长期基础资产特征 |
+
+### 2. 三重过滤机制
+
+```javascript
+// config/filters.js
+liquidity: volume > 10 && openInterest > 100
+bidAskSpread: (ask - bid) / ask < 0.10
+ivSanity: iv > 0.15 && iv < 2.00
+```
+
+### 3. NVDA历史基准系统
+
+- **数据计算**: 126个交易日 (半年) 真实历史期权数据
+- **DTE区间分组**: ultra_short, short, medium, long
+- **基准比较**: 当前IV vs 历史基准IV
+
 ## 配置文件
+
+### CCAS评分参数配置
+```javascript
+// config/ccas-scoring.js
+const MIN_YIELD = 0.05;  // 最低年化收益率 5%
+const MAX_YIELD = 0.25;  // 满分年化收益率 25%
+const MIN_DELTA = 0.10;  // 最低风险Delta 10%
+const MAX_DELTA = 0.40;  // 最高风险Delta 40%
+```
 
 ### 期权过滤器配置
 ```javascript
-// config/filters.js
+// config/filters.js  
 const FILTER_CONFIG = {
   MIN_DAILY_VOLUME: 10,
   MIN_OPEN_INTEREST: 100,
@@ -267,39 +250,6 @@ const FILTER_CONFIG = {
 };
 ```
 
-### VVI历史基准配置
-```javascript
-// config/benchmarks.js
-const HISTORICAL_BENCHMARKS = {
-  'AAPL': { 
-    R_avg: 0.85, R_std_dev: 0.08,
-    HV_segments: {
-      ultra_short: 27.5, short: 25.8,
-      medium: 24.2, long: 22.8
-    }
-  },
-  // ... 其他24只股票
-};
-```
-
-## 数据说明
-
-### 真实数据
-- ✅ 股票价格 (AlphaVantage)
-- ✅ 期权链数据 (AlphaVantage)  
-- ✅ 历史价格 (AlphaVantage)
-- ✅ 过滤器配置 (可配置)
-
-### Mock数据
-- 📊 VVI历史基准 (25只股票的R_avg, R_std_dev)
-- 📊 分段HV基准 (每股票4段HV数据)
-- 🔄 备选期权数据 (API失败时)
-
-### 混合计算
-- 🎯 NVDA基准分析: 真实历史IV基准 + 当前IV比较
-- 🎯 分段HV: Mock基准数据 + 基于DTE的智能选择
-- 🎯 其他股票: 传统Mock基准 + 当前HV/IV
-
 ## 开发说明
 
 ### 添加新股票
@@ -307,8 +257,8 @@ const HISTORICAL_BENCHMARKS = {
 2. 在 `config/benchmarks.js` 添加历史基准数据
 3. 重启服务器
 
-### 修改过滤器
-编辑 `config/filters.js` 中的 `FILTER_CONFIG`
+### 修改CCAS评分参数
+编辑 `config/ccas-scoring.js` 中的评分参数
 
 ### 更新NVDA基准
 通过 `/api/benchmark/nvda/update` 重新计算历史基准
@@ -321,58 +271,45 @@ const HISTORICAL_BENCHMARKS = {
 - AlphaVantage免费版有API限制 (5 calls/min, 100 calls/day)
 - 系统会自动降级到Mock数据
 - 股票价格缓存5分钟
+- **仅支持备兑看涨期权策略分析**
 - 仅供教育和研究使用，不构成投资建议
 
 ## 版本信息
 
-当前版本: v3.0 - CAS综合评分版
-- ✅ CAS综合吸引力评分系统 (买入/卖出看涨期权)
-- ✅ 波动率价值分 + 投机潜力分融合算法  
-- ✅ 前端双评分列显示 (买入评分/卖出评分)
-- ✅ NVDA半年历史基准数据计算 (126个交易日)
-- ✅ 按DTE区间分组的IV基准对比
-- ✅ 真实历史期权数据获取和处理
-- ✅ 分段HV计算系统
-- ✅ 三重过滤机制
-- ✅ 25只股票支持
-- ✅ 现代化UI
-- ✅ 向后兼容VVI评分系统
+**当前版本: v4.0 - CCAS专业备兑版**
 
-## 当前工作状态
+### ✅ v4.0核心功能
+1. **🆕 CCAS评分系统**: 专门针对备兑看涨期权的四步评分算法
+2. **🆕 利润缓冲过滤器**: 动态缓冲要求，避免行权价过近的期权
+3. **🆕 权利金收益分析**: 年化收益率标准化评分 (5%-25%)
+4. **🆕 安全边际评估**: 基于Delta的行权风险量化 (10%-40%)
+5. **🆕 几何平均综合**: 平衡收益与安全的最终评分算法
+6. **🆕 专业UI界面**: 专注于备兑策略的用户界面
+7. **🆕 详细评分解释**: 完整的评分计算过程和建议
 
-**✅ v3.0新增功能**:
-1. CAS综合吸引力评分算法完整实现
-2. 波动率价值分计算 (IV/HV比率评估)
-3. 投机潜力分计算 (Delta性价比评估)
-4. 买入/卖出看涨期权对称性评分
-5. 前端表格新增双评分列显示
-6. 智能评分等级和评价描述
-7. 详细评分工具提示和计算解释
+### ✅ 继承功能
+- NVDA半年历史基准数据计算 (126个交易日)
+- 按DTE区间分组的IV基准对比
+- 真实历史期权数据获取和处理
+- 分段HV计算系统
+- 三重过滤机制
+- 25只股票支持
+- 现代化深色主题UI
 
-**✅ 历史功能保持稳定**:
-1. NVDA历史基准数据系统完整实现
-2. AlphaVantage HISTORICAL_OPTIONS API集成
-3. 策略B: 逐日历史数据获取和IV基准计算
-4. DTE计算修复 (历史日期vs今日日期)
-5. 字段名称兼容性处理 (implied_volatility vs impliedVolatility)
-6. 基准比较分析集成到期权分析流程
-
-**📋 下一步工作**:
-1. 扩展CAS评分到看跌期权
-2. 扩展历史基准到其他热门股票 (AAPL, MSFT, TSLA等)
-3. 优化API调用频率控制 (当前75次/分钟限制)
-4. 前端UI增强: CAS评分可视化图表
-5. 添加基准数据的时效性管理 (定期更新)
-6. 实现基准数据的增量更新机制
+### 📋 规划中功能
+1. 扩展历史基准到其他热门股票 (AAPL, MSFT, TSLA等)
+2. 优化API调用频率控制
+3. 前端UI增强: CCAS评分可视化图表
+4. 添加基准数据的时效性管理
+5. 实现基准数据的增量更新机制
+6. 支持自定义评分参数
 
 ---
 
 **💡 AI开发者提示**: 
-- CAS评分系统在 `config/cas-scoring.js`
-- 期权过滤和评分在 `config/filters.js`
-- 期权数据处理在 `data/mock-data.js` (真实和模拟数据)
-- 前端表格和评分显示在 `public/js/app.js` 和 `public/index.html`
+- CCAS评分系统核心在 `config/ccas-scoring.js`
+- 期权过滤和数据处理在 `data/mock-data.js`
+- 前端表格和CCAS显示在 `public/js/app.js` 和 `public/index.html`
 - NVDA基准系统在 `services/nvda-historical-benchmark.js`
-- 基准数据存储在 `cache/nvda-historical-benchmarks.json`
-- API路由在 `routes/api.js`
-- 支持买入/卖出看涨期权评分，暂不支持看跌期权
+- 专门针对备兑看涨期权策略，不支持其他期权策略
+- 默认按CCAS评分从高到低排序，突出最佳备兑机会
