@@ -324,7 +324,6 @@ body {
     border-bottom: 2px solid #555555;
     cursor: pointer;
     transition: all 0.2s ease;
-    position: relative;
     white-space: nowrap;
     font-size: 11px; /* 表头字体更小 */
     position: sticky;
@@ -379,23 +378,35 @@ body {
 }
 
 /* 列宽优化 - 确保所有内容能在一屏显示 */
-.options-table th:nth-child(1), .options-table td:nth-child(1) { width: 6%; } /* 股票代码 */
-.options-table th:nth-child(2), .options-table td:nth-child(2) { width: 7%; } /* 筛选状态 */
-.options-table th:nth-child(3), .options-table td:nth-child(3) { width: 5%; } /* 到期天数 */
-.options-table th:nth-child(4), .options-table td:nth-child(4) { width: 6%; } /* 行权价 */
-.options-table th:nth-child(5), .options-table td:nth-child(5) { width: 6%; } /* 权利金 */
-.options-table th:nth-child(6), .options-table td:nth-child(6) { width: 4%; } /* 类型 */
-.options-table th:nth-child(7), .options-table td:nth-child(7) { width: 5%; } /* 买入报价 */
-.options-table th:nth-child(8), .options-table td:nth-child(8) { width: 5%; } /* 卖出报价 */
-.options-table th:nth-child(9), .options-table td:nth-child(9) { width: 5%; } /* 当日成交 */
-.options-table th:nth-child(10), .options-table td:nth-child(10) { width: 5%; } /* 未平仓 */
-.options-table th:nth-child(11), .options-table td:nth-child(11) { width: 6%; } /* 隐含波动率 */
-.options-table th:nth-child(12), .options-table td:nth-child(12) { width: 6%; } /* 历史波动率 */
-.options-table th:nth-child(13), .options-table td:nth-child(13) { width: 5%; } /* IV/HV比率 */
-.options-table th:nth-child(14), .options-table td:nth-child(14) { width: 5%; } /* 杠杆率 */
-.options-table th:nth-child(15), .options-table td:nth-child(15) { width: 5%; } /* 行权概率 */
-.options-table th:nth-child(16), .options-table td:nth-child(16) { width: 7%; } /* 买入评分 */
-.options-table th:nth-child(17), .options-table td:nth-child(17) { width: 7%; } /* 卖出评分 */
+.options-table th:nth-child(1), .options-table td:nth-child(1) { width: 5%; } /* 股票代码 */
+.options-table th:nth-child(2), .options-table td:nth-child(2) { width: 10%; } /* 合约编号 */
+.options-table th:nth-child(3), .options-table td:nth-child(3) { width: 6%; } /* 筛选状态 */
+.options-table th:nth-child(4), .options-table td:nth-child(4) { width: 5%; } /* 到期天数 */
+.options-table th:nth-child(5), .options-table td:nth-child(5) { width: 5%; } /* 行权价 */
+.options-table th:nth-child(6), .options-table td:nth-child(6) { width: 5%; } /* 权利金 */
+.options-table th:nth-child(7), .options-table td:nth-child(7) { width: 4%; } /* 类型 */
+.options-table th:nth-child(8), .options-table td:nth-child(8) { width: 5%; } /* 买入报价 */
+.options-table th:nth-child(9), .options-table td:nth-child(9) { width: 5%; } /* 卖出报价 */
+.options-table th:nth-child(10), .options-table td:nth-child(10) { width: 5%; } /* 当日成交 */
+.options-table th:nth-child(11), .options-table td:nth-child(11) { width: 5%; } /* 未平仓 */
+.options-table th:nth-child(12), .options-table td:nth-child(12) { width: 5%; } /* 隐含波动率 */
+.options-table th:nth-child(13), .options-table td:nth-child(13) { width: 5%; } /* 历史波动率 */
+.options-table th:nth-child(14), .options-table td:nth-child(14) { width: 5%; } /* IV/HV比率 */
+.options-table th:nth-child(15), .options-table td:nth-child(15) { width: 5%; } /* 杠杆率 */
+.options-table th:nth-child(16), .options-table td:nth-child(16) { width: 5%; } /* 行权概率 */
+.options-table th:nth-child(17), .options-table td:nth-child(17) { width: 7%; } /* CCAS评分 */
+
+/* 合约编号样式 */
+.contract-id {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    color: #e0e0e0;
+    background: rgba(77, 171, 247, 0.1);
+    padding: 2px 4px;
+    border-radius: 3px;
+    word-break: break-all;
+    line-height: 1.2;
+}
 
 /* 期权类型样式 */
 .option-type {

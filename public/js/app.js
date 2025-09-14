@@ -457,6 +457,7 @@ function renderOptionsTable(options) {
         
         row.innerHTML = `
             <td>${option.symbol}</td>
+            <td class="contract-id" title="期权合约编号">${option.contractID || '-'}</td>
             <td class="filter-status ${option.isQualified ? 'qualified' : 'unqualified'}" title="${getFilterTooltip(option.filters)}">${option.filterStatus || '合格期权'}</td>
             <td class="${option.daysToExpiry <= 0 ? 'expired-option' : ''}" title="${option.daysToExpiry <= 0 ? '此期权已过期' : ''}">${option.daysToExpiry <= 0 ? '已过期' : option.daysToExpiry}</td>
             <td>$${option.strikePrice}</td>
@@ -505,6 +506,9 @@ function sortOptionsData() {
         if (appState.sortColumn === 'ccasScore') {
             aValue = a.ccasScoring?.score || 0;
             bValue = b.ccasScoring?.score || 0;
+        } else if (appState.sortColumn === 'contractID') {
+            aValue = a.contractID || '';
+            bValue = b.contractID || '';
         } else {
             aValue = a[appState.sortColumn];
             bValue = b[appState.sortColumn];
