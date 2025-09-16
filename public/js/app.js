@@ -3,6 +3,7 @@ const appState = {
     selectedStock: null,
     selectedOptionType: 'call',
     selectedExpiry: 30,
+    selectedDate: null, // 新增：分析基准日期
     optionsData: [],
     sortColumn: 'ccasScore',
     sortDirection: 'desc'
@@ -14,6 +15,8 @@ const elements = {
     stockDropdown: document.getElementById('stockDropdown'),
     optionTypeDropdown: document.getElementById('optionTypeDropdown'),
     expiryDropdown: document.getElementById('expiryDropdown'),
+    analysisDate: document.getElementById('analysisDate'),
+    clearDateBtn: document.getElementById('clearDateBtn'),
     analyzeBtn: document.getElementById('analyzeBtn'),
     loadingIndicator: document.getElementById('loadingIndicator'),
     errorMessage: document.getElementById('errorMessage'),
@@ -54,6 +57,16 @@ function setupEventListeners() {
     
     // 到期天数选择器
     setupDropdown('expiry', appState.selectedExpiry, handleExpiryChange);
+    
+    // 日期选择器事件
+    if (elements.analysisDate) {
+        elements.analysisDate.addEventListener('change', handleDateChange);
+    }
+    
+    // 清除日期按钮
+    if (elements.clearDateBtn) {
+        elements.clearDateBtn.addEventListener('click', clearAnalysisDate);
+    }
     
     // 分析按钮
     elements.analyzeBtn.addEventListener('click', analyzeOptions);
@@ -283,6 +296,32 @@ function handleExpiryChange(value) {
     appState.selectedExpiry = parseInt(value);
 }
 
+// 日期变更处理
+function handleDateChange(event) {
+    const selectedDate = event.target.value;
+    appState.selectedDate = selectedDate || null;
+    
+    console.log('分析基准日期变更:', selectedDate || '今天');
+    
+    // 验证日期不能超过今天
+    if (selectedDate) {
+        const today = new Date().toISOString().split('T')[0];
+        if (selectedDate > today) {
+            showError('分析日期不能超过今天');
+            elements.analysisDate.value = '';
+            appState.selectedDate = null;
+            return;
+        }
+    }
+}
+
+// 清除分析日期
+function clearAnalysisDate() {
+    elements.analysisDate.value = '';
+    appState.selectedDate = null;
+    console.log('已清除分析基准日期，将使用今天');
+}
+
 // 分析期权
 async function analyzeOptions() {
     if (!appState.selectedStock) {
@@ -296,8 +335,21 @@ async function analyzeOptions() {
     
     try {
         const optionType = appState.selectedOptionType; // 现在只处理看涨期权，买入/卖出通过前端展示不同评分
+        
+        // 构建API请求URL，包含日期参数
+        const params = new URLSearchParams({
+            type: optionType,
+            days: appState.selectedExpiry,
+            refresh: 'true'
+        });
+        
+        // 如果选择了分析日期，添加到参数中
+        if (appState.selectedDate) {
+            params.append('date', appState.selectedDate);
+        }
+        
         const response = await fetch(
-            `/api/options/${appState.selectedStock.symbol}?type=${optionType}&days=${appState.selectedExpiry}&refresh=true`
+            `/api/options/${appState.selectedStock.symbol}?${params.toString()}`
         );
         const result = await response.json();
         
@@ -424,8 +476,14 @@ function displayResults(data) {
         }
     }
     
+    // 构建标题，包含基准日期信息
+    let titleText = `${currentStock.symbol} 期权分析结果`;
+    if (appState.selectedDate) {
+        titleText += ` (基准日期: ${appState.selectedDate})`;
+    }
+    
     // 更新标题和信息
-    elements.resultsTitle.textContent = `${currentStock.symbol} 期权分析结果`;
+    elements.resultsTitle.textContent = titleText;
     elements.stockInfo.textContent = `${currentStock.name} - ${priceTypeLabel}: $${currentStock.price} | 合格期权: ${qualifiedCount}/${totalCount}`;
     // 使用股票数据的最后更新时间，如果没有则使用API响应时间
     const displayTime = currentStock.lastUpdated ? new Date(currentStock.lastUpdated) : new Date(data.timestamp);

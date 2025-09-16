@@ -284,6 +284,54 @@ class AlphaVantageService {
     }
 
     /**
+     * 获取指定日期的历史股票价格
+     * @param {string} symbol - 股票代码
+     * @param {string} date - 日期 (YYYY-MM-DD 格式)
+     * @returns {Promise<Object>} 历史股票价格数据
+     */
+    async getHistoricalStockPrice(symbol, date) {
+        try {
+            console.log(`获取 ${symbol} 在 ${date} 的历史价格数据`);
+            
+            // 首先尝试从每日历史数据中获取指定日期的价格
+            const historicalPrices = await this.getHistoricalPrices(symbol, 100); // 获取100天的历史数据
+            
+            // 查找指定日期的数据
+            const targetDateData = historicalPrices.find(priceData => priceData.date === date);
+            
+            if (targetDateData) {
+                const historicalPriceData = {
+                    symbol: symbol,
+                    price: targetDateData.adjustedClose,
+                    open: targetDateData.open,
+                    high: targetDateData.high,
+                    low: targetDateData.low,
+                    volume: targetDateData.volume,
+                    timestamp: date + ' 16:00:00', // 假设美东时间收盘
+                    lastUpdated: new Date().toISOString(),
+                    dataSource: 'historical'
+                };
+                
+                console.log(`✅ 成功获取 ${symbol} 在 ${date} 的历史价格: $${historicalPriceData.price}`);
+                return historicalPriceData;
+            } else {
+                throw new Error(`未找到 ${symbol} 在 ${date} 的历史价格数据`);
+            }
+            
+        } catch (error) {
+            console.error(`获取 ${symbol} 在 ${date} 的历史价格失败:`, error.message);
+            
+            // 如果获取历史价格失败，返回模拟数据
+            const fallbackData = this.getFallbackPrice(symbol);
+            return {
+                ...fallbackData,
+                timestamp: date + ' 16:00:00',
+                dataSource: 'fallback'
+            };
+        }
+    }
+
+    /**
      * 获取备选价格数据（当API失败时使用）
      * @param {string} symbol 
      * @returns {Object}
@@ -408,7 +456,7 @@ class AlphaVantageService {
             }
 
             // 处理期权数据（包含HV计算）
-            const processedData = await this.processOptionsData(optionsArray, symbol, stockPrice);
+            const processedData = await this.processOptionsData(optionsArray, symbol, date, stockPrice);
 
             // 缓存数据
             this.setCachedData(cacheKey, processedData);
@@ -572,9 +620,11 @@ class AlphaVantageService {
      * 处理原始期权数据，转换为系统需要的格式（包含HV计算）
      * @param {Array} rawData - 原始API数据
      * @param {string} symbol - 股票代码
+     * @param {string|null} baseDate - 基准日期 (YYYY-MM-DD)，为null时使用今天
+     * @param {number|null} stockPrice - 股票价格
      * @returns {Promise<Array>} 处理后的期权数据
      */
-    async processOptionsData(rawData, symbol, stockPrice = null) {
+    async processOptionsData(rawData, symbol, baseDate = null, stockPrice = null) {
         // 按到期天数分组，为每组计算一次HV
         const expiryGroups = {};
         const processedOptions = [];
@@ -582,13 +632,15 @@ class AlphaVantageService {
         // 第一步：按到期天数分组，同时过滤已过期期权
         rawData.forEach(option => {
             const expirationDate = new Date(option.expiration);
-            const currentDate = new Date();
-            const daysToExpiry = Math.ceil((expirationDate - currentDate) / (1000 * 60 * 60 * 24));
+            // 使用基准日期或今天作为计算基准
+            const referenceDate = baseDate ? new Date(baseDate) : new Date();
+            const daysToExpiry = Math.ceil((expirationDate - referenceDate) / (1000 * 60 * 60 * 24));
             
             // 注意：后台基准数据更新时不过滤任何期权，前台显示时才过滤
             // 这里保留过期期权的调试信息，但不跳过处理
             if (daysToExpiry <= 0) {
-                // console.log(`过期期权: ${option.contractID || option.symbol} 到期日: ${option.expiration} (到期天数: ${daysToExpiry})`);
+                const dateInfo = baseDate ? `基准日期 ${baseDate}` : '今天';
+                console.log(`相对${dateInfo}已过期的期权: ${option.contractID || option.symbol} 到期日: ${option.expiration} (到期天数: ${daysToExpiry})`);
                 // 不再跳过，继续处理
             }
             

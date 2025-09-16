@@ -143,12 +143,13 @@ const getStocks = getStocksWithRealTimePrices;
 
 
 // 获取真实期权数据
-async function getRealOptionsData(symbol, stockPrice, optionType = null, daysToExpiry = null, benchmarkData = null) {
+async function getRealOptionsData(symbol, stockPrice, optionType = null, daysToExpiry = null, benchmarkData = null, date = null) {
   try {
-    console.log(`获取 ${symbol} 的真实期权数据...`);
+        const dataTypeText = date ? `${date}历史` : '实时';
+        console.log(`获取 ${symbol} 的${dataTypeText}期权数据...`);
     
-    // 调用 AlphaVantage API 获取期权数据，传递股票价格用于计算杠杆率
-    const optionsData = await alphaVantageService.getOptionsData(symbol, true, null, stockPrice);
+    // 调用 AlphaVantage API 获取期权数据，传递股票价格用于计算杠杆率和日期参数
+    const optionsData = await alphaVantageService.getOptionsData(symbol, true, date, stockPrice);
     
     // 筛选期权数据
     const filteredOptions = alphaVantageService.filterOptionsData(
@@ -285,13 +286,14 @@ async function getRealOptionsData(symbol, stockPrice, optionType = null, daysToE
 }
 
 // 期权数据获取函数（优先使用真实数据，失败时使用模拟数据）
-async function getOptionsData(symbol, stockPrice, optionType, daysToExpiry, benchmarkData = null) {
+async function getOptionsData(symbol, stockPrice, optionType, daysToExpiry, benchmarkData = null, date = null) {
   try {
     // 首先尝试获取真实期权数据
-    const realOptions = await getRealOptionsData(symbol, stockPrice, optionType, daysToExpiry, benchmarkData);
+    const realOptions = await getRealOptionsData(symbol, stockPrice, optionType, daysToExpiry, benchmarkData, date);
     
     if (realOptions.length > 0) {
-      console.log(`使用 ${symbol} 的真实期权数据`);
+        const dataTypeText = date ? `${date}历史` : '实时';
+        console.log(`使用 ${symbol} 的${dataTypeText}期权数据`);
       return realOptions;
     }
   } catch (error) {

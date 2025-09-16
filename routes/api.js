@@ -72,11 +72,19 @@ router.get('/stocks', async (req, res) => {
 router.get('/options/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
-    const { type = 'call', days = 30 } = req.query;
+    const { type = 'call', days = 30, date = null } = req.query;
     
-    // 每次分析期权都强制获取该股票的最新价格（确保实时性）
-    console.log(`获取 ${symbol} 的最新股票价格用于期权分析`);
-    const refreshedData = await alphaVantageService.refreshStockPrice(symbol);
+    // 根据是否选择了日期，获取股票价格数据
+    let refreshedData;
+    if (date) {
+      console.log(`获取 ${symbol} 在 ${date} 的历史股票价格用于期权分析`);
+      // 对于历史日期，我们需要获取该日期的股票价格
+      refreshedData = await alphaVantageService.getHistoricalStockPrice(symbol, date);
+    } else {
+      console.log(`获取 ${symbol} 的最新股票价格用于期权分析`);
+      refreshedData = await alphaVantageService.refreshStockPrice(symbol);
+    }
+    
     // 使用获取到的数据更新mock-data的缓存，避免重复API调用
     await refreshStockCache(symbol, refreshedData);
     
@@ -109,7 +117,8 @@ router.get('/options/:symbol', async (req, res) => {
       stock.price, 
       type.toLowerCase(), 
       parseInt(days),
-      benchmarkData // 传递基准数据
+      benchmarkData, // 传递基准数据
+      date // 传递日期参数
     );
     
     // 判断数据源
