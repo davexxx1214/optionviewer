@@ -530,4 +530,129 @@ router.get('/benchmark/nvda/data', async (req, res) => {
   }
 });
 
+// ===== 数据库相关API =====
+
+// 获取数据库统计信息
+router.get('/database/stats', async (req, res) => {
+  try {
+    const stats = await alphaVantageService.getDatabaseStats();
+    
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 从数据库查询历史股票价格数据（TIME_SERIES_DAILY_ADJUSTED）
+router.get('/database/historical-stock-prices/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { startDate, endDate, limit = 1000 } = req.query;
+    
+    const priceData = await alphaVantageService.getHistoricalStockPricesFromDB(
+      symbol, 
+      startDate, 
+      endDate, 
+      parseInt(limit)
+    );
+    
+    res.json({
+      success: true,
+      data: priceData,
+      count: priceData.length,
+      message: `查询到 ${priceData.length} 条历史调整价格数据 (TIME_SERIES_DAILY_ADJUSTED)`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 查询特定日期的股票价格（用于回测）
+router.get('/database/stock-price/:symbol/:date', async (req, res) => {
+  try {
+    const { symbol, date } = req.params;
+    
+    const priceData = await alphaVantageService.getStockPriceByDateFromDB(symbol, date);
+    
+    if (priceData) {
+      res.json({
+        success: true,
+        data: priceData,
+        message: `查询到 ${symbol} 在 ${date} 的股票价格数据`
+      });
+    } else {
+      res.json({
+        success: false,
+        message: `未找到 ${symbol} 在 ${date} 的股票价格数据`
+      });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 从数据库查询历史期权数据（HISTORICAL_OPTIONS）
+router.get('/database/historical-options/:symbol', async (req, res) => {
+  try {
+    const { symbol } = req.params;
+    const { dataDate, expirationDate, optionType, limit = 1000 } = req.query;
+    
+    const optionsData = await alphaVantageService.getHistoricalOptionsDataFromDB(
+      symbol, 
+      dataDate,
+      expirationDate, 
+      optionType, 
+      parseInt(limit)
+    );
+    
+    res.json({
+      success: true,
+      data: optionsData,
+      count: optionsData.length,
+      message: `查询到 ${optionsData.length} 条历史期权数据 (HISTORICAL_OPTIONS)`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 查询特定日期的期权数据（用于回测）
+router.get('/database/options/:symbol/:date', async (req, res) => {
+  try {
+    const { symbol, date } = req.params;
+    const { optionType } = req.query;
+    
+    const optionsData = await alphaVantageService.getOptionsByDateFromDB(symbol, date, optionType);
+    
+    res.json({
+      success: true,
+      data: optionsData,
+      count: optionsData.length,
+      message: `查询到 ${symbol} 在 ${date} 的 ${optionsData.length} 条期权数据`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// HV数据不再单独存储，而是从历史价格数据实时计算
+
 module.exports = router; 

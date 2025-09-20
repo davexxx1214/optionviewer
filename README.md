@@ -97,6 +97,7 @@ optionviewer/
 ├── routes/api.js          # API路由
 ├── services/
 │   ├── alphavantage.js    # AlphaVantage API服务
+│   ├── database.js        # 🆕 SQLite数据库服务
 │   ├── nvda-historical-benchmark.js  # NVDA历史基准数据计算
 │   ├── hv-cache.js        # HV缓存管理
 │   └── price-cache.js     # 价格缓存管理
@@ -109,7 +110,11 @@ optionviewer/
 │   └── nvda-raw-historical-data.json    # NVDA原始历史数据
 ├── data/
 │   ├── stocks-config.js   # 支持的股票列表
-│   └── mock-data.js       # Mock数据生成逻辑
+│   ├── mock-data.js       # Mock数据生成逻辑
+│   └── alphavantage_data.db  # 🆕 SQLite数据库文件
+├── scripts/
+│   ├── db-manager.js      # 🆕 数据库管理CLI工具
+│   └── data-downloader.js # 🆕 历史数据批量下载工具
 └── public/                # 前端静态文件
 ```
 
@@ -121,6 +126,11 @@ npm install
 cp .env.example .env
 # 编辑 .env，添加 ALPHAVANTAGE_API_KEY
 ```
+
+**新增依赖项 (SQLite):**
+- 项目已添加 `sqlite3` 依赖用于数据库存储
+- 数据库会在首次运行时自动创建
+- 无需额外配置，开箱即用
 
 ### 2. 启动服务
 ```bash
@@ -313,3 +323,66 @@ const FILTER_CONFIG = {
 - NVDA基准系统在 `services/nvda-historical-benchmark.js`
 - 专门针对备兑看涨期权策略，不支持其他期权策略
 - 默认按CCAS评分从高到低排序，突出最佳备兑机会
+
+### 🗂️ 数据库管理
+
+项目集成了SQLite数据库来持久化存储所有Alpha Vantage API数据：
+
+**数据批量下载工具:**
+```bash
+# 下载指定日期范围的所有数据
+node scripts/data-downloader.js 2025-09-01 2025-09-20
+
+# 下载多只股票的数据
+node scripts/data-downloader.js 2025-09-01 2025-09-20 --symbols NVDA,AAPL,TSLA,MSFT
+
+# 只下载股价数据
+node scripts/data-downloader.js 2025-09-01 2025-09-20 --stock-only
+
+# 只下载期权数据（推荐设置更长延迟）
+node scripts/data-downloader.js 2025-09-01 2025-09-20 --options-only --delay 15000
+
+# 查看帮助
+node scripts/data-downloader.js --help
+```
+
+**数据库管理CLI工具:**
+```bash
+# 查看数据库统计信息
+node scripts/db-manager.js stats
+
+# 查看历史股票价格数据
+node scripts/db-manager.js stock-prices NVDA
+
+# 查看历史期权数据
+node scripts/db-manager.js options NVDA
+
+# 查看特定日期的期权数据
+node scripts/db-manager.js options NVDA 2025-09-02
+
+# 清空数据表
+node scripts/db-manager.js clear-stock-prices
+node scripts/db-manager.js clear-options
+node scripts/db-manager.js clear-all
+```
+
+**数据库API接口:**
+```bash
+# 获取数据库统计信息
+GET /api/database/stats
+
+# 查询股票价格数据
+GET /api/database/stock-prices/NVDA?startDate=2024-01-01&limit=100
+
+# 查询期权数据
+GET /api/database/options/NVDA?optionType=call&limit=1000
+
+# 查询HV数据
+GET /api/database/hv/NVDA/30?startDate=2024-01-01
+```
+
+**数据自动存储:**
+- 所有Alpha Vantage API获取的数据都会自动存储到数据库
+- 包括股票价格、期权数据、历史波动率等
+- 支持历史数据查询和数据分析
+- 减少重复API调用，提高系统效率

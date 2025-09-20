@@ -1,6 +1,7 @@
 const axios = require('axios');
 const hvCacheManager = require('./hv-cache');
 const priceCacheManager = require('./price-cache');
+const database = require('./database');
 require('dotenv').config();
 
 class AlphaVantageService {
@@ -59,6 +60,9 @@ class AlphaVantageService {
             
             // 缓存数据到天级缓存
             await priceCacheManager.setCachedPrice(symbol, priceData);
+            
+            // 注意：实时价格数据不保存到数据库，只保存历史调整价格数据
+            // 这里的数据主要用于即时显示，不用于回测
             
             return priceData;
 
@@ -284,7 +288,7 @@ class AlphaVantageService {
     }
 
     /**
-     * 获取指定日期的历史股票价格
+     * 获取指定日期的历史股票价格（优先从数据库查询）
      * @param {string} symbol - 股票代码
      * @param {string} date - 日期 (YYYY-MM-DD 格式)
      * @returns {Promise<Object>} 历史股票价格数据
@@ -293,8 +297,30 @@ class AlphaVantageService {
         try {
             console.log(`获取 ${symbol} 在 ${date} 的历史价格数据`);
             
-            // 首先尝试从每日历史数据中获取指定日期的价格
-            const historicalPrices = await this.getHistoricalPrices(symbol, 100); // 获取100天的历史数据
+            // 🔥 首先尝试从数据库查询特定日期的价格
+            const dbPriceData = await this.getStockPriceByDateFromDB(symbol, date);
+            
+            if (dbPriceData) {
+                console.log(`✅ 从数据库获取 ${symbol} 在 ${date} 的历史价格: $${dbPriceData.close}`);
+                
+                const historicalPriceData = {
+                    symbol: symbol,
+                    price: dbPriceData.adjusted_close,
+                    open: dbPriceData.open,
+                    high: dbPriceData.high,
+                    low: dbPriceData.low,
+                    volume: dbPriceData.volume,
+                    timestamp: date + ' 16:00:00', // 假设美东时间收盘
+                    lastUpdated: new Date().toISOString(),
+                    dataSource: 'database'
+                };
+                
+                return historicalPriceData;
+            }
+            
+            // 🔥 如果数据库中没有，尝试从API获取历史数据
+            console.log(`数据库中未找到 ${symbol} 在 ${date} 的价格数据，从API获取...`);
+            const historicalPrices = await this.getHistoricalPricesWithDBFirst(symbol, 100); // 使用数据库优先的方法
             
             // 查找指定日期的数据
             const targetDateData = historicalPrices.find(priceData => priceData.date === date);
@@ -309,10 +335,10 @@ class AlphaVantageService {
                     volume: targetDateData.volume,
                     timestamp: date + ' 16:00:00', // 假设美东时间收盘
                     lastUpdated: new Date().toISOString(),
-                    dataSource: 'historical'
+                    dataSource: 'api'
                 };
                 
-                console.log(`✅ 成功获取 ${symbol} 在 ${date} 的历史价格: $${historicalPriceData.price}`);
+                console.log(`✅ 从API获取 ${symbol} 在 ${date} 的历史价格: $${historicalPriceData.price}`);
                 return historicalPriceData;
             } else {
                 throw new Error(`未找到 ${symbol} 在 ${date} 的历史价格数据`);
@@ -403,6 +429,56 @@ class AlphaVantageService {
             console.log(`强制刷新 ${symbol} 期权数据`);
         }
 
+        // 🔥 如果指定了日期，优先从数据库查询历史期权数据
+        if (date) {
+            try {
+                console.log(`🔍 首先尝试从数据库获取 ${symbol} ${date} 的历史期权数据...`);
+                const dbOptionsData = await this.getOptionsByDateFromDB(symbol, date);
+                
+                if (dbOptionsData && dbOptionsData.length > 0) {
+                    console.log(`✅ 从数据库获取 ${symbol} ${date} 期权数据: ${dbOptionsData.length} 条记录`);
+                    
+                    // 转换数据库格式为处理后的格式
+                    const processedData = dbOptionsData.map(row => ({
+                        symbol: row.symbol,
+                        contractID: row.contract_id,
+                        daysToExpiry: row.days_to_expiry,
+                        strikePrice: row.strike_price,
+                        premium: row.mark_price || ((row.bid + row.ask) / 2),
+                        type: row.option_type,
+                        bid: row.bid,
+                        ask: row.ask,
+                        volume: row.volume || 0,
+                        openInterest: row.open_interest || 0,
+                        impliedVolatility: row.implied_volatility,
+                        historicalVolatility: row.historical_volatility,
+                        hvPeriod: row.hv_period,
+                        ivHvRatio: row.implied_volatility && row.historical_volatility ? 
+                                   (row.implied_volatility / row.historical_volatility) : null,
+                        delta: row.delta,
+                        gamma: row.gamma,
+                        theta: row.theta,
+                        vega: row.vega,
+                        rho: row.rho,
+                        lastPrice: row.last_price || 0,
+                        expiration: row.expiration_date,
+                        leverageRatio: row.leverage_ratio,
+                        exerciseProbability: row.exercise_probability,
+                        dataSource: 'database'
+                    }));
+                    
+                    // 缓存数据库结果
+                    this.setCachedData(cacheKey, processedData);
+                    return processedData;
+                }
+                
+                console.log(`数据库中未找到 ${symbol} ${date} 的期权数据，将从API获取...`);
+            } catch (dbError) {
+                console.error(`从数据库查询期权数据失败:`, dbError.message);
+                console.log(`将尝试从API获取 ${symbol} ${date} 期权数据...`);
+            }
+        }
+
         try {
             if (date) {
                 console.log(`从API获取 ${symbol} ${date} 历史期权数据`);
@@ -460,6 +536,14 @@ class AlphaVantageService {
 
             // 缓存数据
             this.setCachedData(cacheKey, processedData);
+            
+            // 存储到数据库 - HISTORICAL_OPTIONS 是回测的核心数据源
+            try {
+                await this.saveOptionsDataToDatabase(processedData);
+                console.log(`✅ 已保存 ${symbol} 的 HISTORICAL_OPTIONS 数据到数据库，用于回测`);
+            } catch (dbError) {
+                console.error(`❌ 保存 ${symbol} 期权数据到数据库失败:`, dbError.message);
+            }
             
             return processedData;
 
@@ -877,6 +961,14 @@ class AlphaVantageService {
             // 缓存历史价格数据（只在内存中缓存，不持久化）
             this.setCachedData(cacheKey, prices);
             
+            // 存储到数据库 - 这是回测的核心数据源
+            try {
+                await this.saveHistoricalPricesToDatabase(symbol, prices);
+                console.log(`✅ 已保存 ${symbol} 的 TIME_SERIES_DAILY_ADJUSTED 数据到数据库，用于回测`);
+            } catch (dbError) {
+                console.error(`❌ 保存 ${symbol} 历史价格数据到数据库失败:`, dbError.message);
+            }
+            
             return prices;
 
         } catch (error) {
@@ -901,8 +993,8 @@ class AlphaVantageService {
 
             console.log(`计算 ${symbol} ${days}天HV（无缓存，需要API调用）`);
 
-            // 获取历史价格数据
-            const prices = await this.getHistoricalPrices(symbol, days);
+            // 优先从数据库获取历史价格数据
+            const prices = await this.getHistoricalPricesWithDBFirst(symbol, days);
             
             if (prices.length < days + 1) {
                 throw new Error(`历史数据不足，需要 ${days + 1} 天，实际获得 ${prices.length} 天`);
@@ -939,6 +1031,9 @@ class AlphaVantageService {
             
             // 将计算结果缓存到今天的缓存中
             await hvCacheManager.setCachedHV(symbol, days, hvPercent);
+            
+            // HV数据不保存到数据库，因为可以从历史价格数据计算得出
+            // 这样可以确保HV始终基于最新的历史价格数据
             
             return hvPercent;
 
@@ -1071,6 +1166,142 @@ class AlphaVantageService {
      */
     async getAllCachedPriceData() {
         return await priceCacheManager.getAllCachedData();
+    }
+
+    // 删除了实时价格数据保存方法，因为只保存历史调整价格数据
+
+    /**
+     * 保存历史价格数据到数据库（TIME_SERIES_DAILY_ADJUSTED）
+     */
+    async saveHistoricalPricesToDatabase(symbol, pricesArray) {
+        try {
+            const dbDataArray = pricesArray.map(price => ({
+                symbol: symbol,
+                date: price.date,
+                open: price.open,
+                high: price.high,
+                low: price.low,
+                close: price.close,
+                adjusted_close: price.adjustedClose,
+                volume: price.volume,
+                dividend_amount: 0, // 可以从API数据中提取，如果有的话
+                split_coefficient: 1 // 可以从API数据中提取，如果有的话
+            }));
+
+            const result = await database.insertBatchHistoricalStockPrices(dbDataArray);
+            console.log(`✅ 已保存 ${symbol} ${result.successCount} 条历史调整价格数据到数据库 (TIME_SERIES_DAILY_ADJUSTED)`);
+        } catch (error) {
+            throw new Error(`保存历史价格数据到数据库失败: ${error.message}`);
+        }
+    }
+
+    /**
+     * 保存期权数据到数据库（HISTORICAL_OPTIONS）
+     */
+    async saveOptionsDataToDatabase(optionsArray) {
+        try {
+            const result = await database.insertBatchHistoricalOptionsData(optionsArray);
+            console.log(`✅ 已保存 ${result.successCount} 条历史期权数据到数据库 (HISTORICAL_OPTIONS)`);
+        } catch (error) {
+            throw new Error(`保存期权数据到数据库失败: ${error.message}`);
+        }
+    }
+
+    // 删除了HV和API调用的数据库保存方法，专注于核心历史数据
+
+    /**
+     * 从数据库获取数据库统计信息
+     */
+    async getDatabaseStats() {
+        try {
+            return await database.getStats();
+        } catch (error) {
+            console.error('获取数据库统计信息失败:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * 从数据库查询历史股票价格数据（用于回测）
+     */
+    async getHistoricalStockPricesFromDB(symbol, startDate = null, endDate = null, limit = 1000) {
+        try {
+            return await database.getHistoricalStockPrices(symbol, startDate, endDate, limit);
+        } catch (error) {
+            console.error('从数据库查询历史股票价格失败:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * 从数据库查询特定日期的股票价格（用于回测）
+     */
+    async getStockPriceByDateFromDB(symbol, date) {
+        try {
+            return await database.getStockPriceByDate(symbol, date);
+        } catch (error) {
+            console.error('从数据库查询指定日期股票价格失败:', error.message);
+            return null;
+        }
+    }
+
+    /**
+     * 从数据库查询历史期权数据（用于回测）
+     */
+    async getHistoricalOptionsDataFromDB(symbol, dataDate = null, expirationDate = null, optionType = null, limit = 1000) {
+        try {
+            return await database.getHistoricalOptionsData(symbol, dataDate, expirationDate, optionType, limit);
+        } catch (error) {
+            console.error('从数据库查询历史期权数据失败:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * 从数据库查询特定日期的期权数据（用于回测）
+     */
+    async getOptionsByDateFromDB(symbol, date, optionType = null) {
+        try {
+            return await database.getOptionsByDate(symbol, date, optionType);
+        } catch (error) {
+            console.error('从数据库查询指定日期期权数据失败:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * 优先从数据库获取历史价格数据，如果没有则调用API并保存
+     */
+    async getHistoricalPricesWithDBFirst(symbol, days) {
+        try {
+            // 首先尝试从数据库获取
+            const endDate = new Date().toISOString().split('T')[0];
+            const startDate = new Date(Date.now() - (days + 10) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            
+            const dbPrices = await this.getHistoricalStockPricesFromDB(symbol, startDate, endDate, days + 10);
+            
+            if (dbPrices.length >= days * 0.8) { // 如果数据库中有足够的数据（80%以上）
+                console.log(`✅ 从数据库获取 ${symbol} 历史价格数据: ${dbPrices.length} 条记录`);
+                
+                // 转换数据库格式为API格式
+                return dbPrices.map(row => ({
+                    date: row.date,
+                    adjustedClose: row.adjusted_close,
+                    close: row.close,
+                    open: row.open,
+                    high: row.high,
+                    low: row.low,
+                    volume: row.volume
+                }));
+            } else {
+                console.log(`数据库中 ${symbol} 历史价格数据不足，调用API获取...`);
+                // 数据库数据不足，调用API获取
+                return await this.getHistoricalPrices(symbol, days);
+            }
+        } catch (error) {
+            console.error(`获取 ${symbol} 历史价格数据失败:`, error.message);
+            throw error;
+        }
     }
 }
 
