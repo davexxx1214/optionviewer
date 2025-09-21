@@ -439,33 +439,40 @@ class AlphaVantageService {
                     console.log(`✅ 从数据库获取 ${symbol} ${date} 期权数据: ${dbOptionsData.length} 条记录`);
                     
                     // 转换数据库格式为处理后的格式
-                    const processedData = dbOptionsData.map(row => ({
-                        symbol: row.symbol,
-                        contractID: row.contract_id,
-                        daysToExpiry: row.days_to_expiry,
-                        strikePrice: row.strike_price,
-                        premium: row.mark_price || ((row.bid + row.ask) / 2),
-                        type: row.option_type,
-                        bid: row.bid,
-                        ask: row.ask,
-                        volume: row.volume || 0,
-                        openInterest: row.open_interest || 0,
-                        impliedVolatility: row.implied_volatility,
-                        historicalVolatility: row.historical_volatility,
-                        hvPeriod: row.hv_period,
-                        ivHvRatio: row.implied_volatility && row.historical_volatility ? 
-                                   (row.implied_volatility / row.historical_volatility) : null,
-                        delta: row.delta,
-                        gamma: row.gamma,
-                        theta: row.theta,
-                        vega: row.vega,
-                        rho: row.rho,
-                        lastPrice: row.last_price || 0,
-                        expiration: row.expiration_date,
-                        leverageRatio: row.leverage_ratio,
-                        exerciseProbability: row.exercise_probability,
-                        dataSource: 'database'
-                    }));
+                    const processedData = dbOptionsData.map(row => {
+                        // 🔥 重新计算历史数据的daysToExpiry（基于查询日期而不是当前日期）
+                        const queryDate = new Date(date);
+                        const expirationDate = new Date(row.expiration_date);
+                        const daysToExpiry = Math.ceil((expirationDate - queryDate) / (1000 * 60 * 60 * 24));
+                        
+                        return {
+                            symbol: row.symbol,
+                            contractID: row.contract_id,
+                            daysToExpiry: daysToExpiry,
+                            strikePrice: row.strike_price,
+                            premium: row.mark_price || ((row.bid + row.ask) / 2),
+                            type: row.option_type,
+                            bid: row.bid,
+                            ask: row.ask,
+                            volume: row.volume || 0,
+                            openInterest: row.open_interest || 0,
+                            impliedVolatility: row.implied_volatility,
+                            historicalVolatility: row.historical_volatility,
+                            hvPeriod: row.hv_period,
+                            ivHvRatio: row.implied_volatility && row.historical_volatility ? 
+                                       (row.implied_volatility / row.historical_volatility) : null,
+                            delta: row.delta,
+                            gamma: row.gamma,
+                            theta: row.theta,
+                            vega: row.vega,
+                            rho: row.rho,
+                            lastPrice: row.last_price || 0,
+                            expiration: row.expiration_date,
+                            leverageRatio: row.leverage_ratio,
+                            exerciseProbability: row.exercise_probability,
+                            dataSource: 'database'
+                        };
+                    });
                     
                     // 缓存数据库结果
                     this.setCachedData(cacheKey, processedData);
@@ -829,10 +836,10 @@ class AlphaVantageService {
     filterOptionsData(optionsData, type = null, maxDays = null) {
         let filtered = [...optionsData];
 
-        // 🔥 重要修复：首先过滤掉已过期的期权（daysToExpiry <= 0）
+        // 🔥 重要修复：过滤掉已过期的期权，但允许当天到期的期权（历史回测需要）
         filtered = filtered.filter(option => {
             const daysToExpiry = option.daysToExpiry;
-            if (daysToExpiry <= 0) {
+            if (daysToExpiry < 0) {
                 console.log(`过滤已过期期权: ${option.contractID || option.symbol} (到期天数: ${daysToExpiry})`);
                 return false;
             }
