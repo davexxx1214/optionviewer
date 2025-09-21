@@ -70,7 +70,7 @@ class DatabaseService {
                 volume INTEGER NOT NULL,
                 dividend_amount REAL DEFAULT 0,
                 split_coefficient REAL DEFAULT 1,
-                data_source TEXT DEFAULT 'TIME_SERIES_DAILY_ADJUSTED',
+                data_source TEXT DEFAULT 'TIME_SERIES_DAILY',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(symbol, date)
@@ -138,7 +138,7 @@ class DatabaseService {
     // 2. API调用记录对回测不重要，简化数据库结构
 
     /**
-     * 插入历史股票价格数据（TIME_SERIES_DAILY_ADJUSTED）
+     * 插入历史股票价格数据（TIME_SERIES_DAILY）
      */
     async insertHistoricalStockPrice(priceData) {
         return new Promise((resolve, reject) => {

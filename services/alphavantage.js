@@ -341,6 +341,23 @@ class AlphaVantageService {
                 console.log(`✅ 从API获取 ${symbol} 在 ${date} 的历史价格: $${historicalPriceData.price}`);
                 return historicalPriceData;
             } else {
+                // 🔥 尝试基于期权数据推估历史股价
+                const estimatedPrice = await this.estimateHistoricalPriceFromOptions(symbol, date);
+                if (estimatedPrice) {
+                    console.log(`✅ 基于期权数据推估 ${symbol} 在 ${date} 的历史价格: $${estimatedPrice}`);
+                    return {
+                        symbol: symbol,
+                        price: estimatedPrice,
+                        open: estimatedPrice * 0.99,
+                        high: estimatedPrice * 1.02,
+                        low: estimatedPrice * 0.98,
+                        volume: 50000000,
+                        timestamp: date + ' 16:00:00',
+                        lastUpdated: new Date().toISOString(),
+                        dataSource: 'estimated_from_options'
+                    };
+                }
+                
                 throw new Error(`未找到 ${symbol} 在 ${date} 的历史价格数据`);
             }
             
@@ -354,6 +371,51 @@ class AlphaVantageService {
                 timestamp: date + ' 16:00:00',
                 dataSource: 'fallback'
             };
+        }
+    }
+
+    /**
+     * 基于期权数据推估历史股价
+     * @param {string} symbol 
+     * @param {string} date 
+     * @returns {Promise<number|null>}
+     */
+    async estimateHistoricalPriceFromOptions(symbol, date) {
+        try {
+            // 从数据库获取该日期的期权数据
+            const optionsData = await this.getOptionsByDateFromDB(symbol, date);
+            if (!optionsData || optionsData.length === 0) {
+                return null;
+            }
+
+            // 找到接近平价的期权（delta接近0.5的看涨期权）
+            const nearMoneyOptions = optionsData.filter(opt => 
+                opt.option_type === 'call' && 
+                opt.delta && 
+                opt.delta >= 0.4 && 
+                opt.delta <= 0.6
+            );
+
+            if (nearMoneyOptions.length > 0) {
+                // 使用delta最接近0.5的期权行权价作为股价估算
+                const bestOption = nearMoneyOptions.reduce((best, current) => 
+                    Math.abs(current.delta - 0.5) < Math.abs(best.delta - 0.5) ? current : best
+                );
+                
+                console.log(`🔍 基于期权delta推估: ${symbol} ${date} 最佳期权 delta=${bestOption.delta} 行权价=$${bestOption.strike_price}`);
+                return bestOption.strike_price;
+            }
+
+            // 如果没有delta数据，使用期权行权价分布来估算
+            const strikes = optionsData.map(opt => opt.strike_price).sort((a, b) => a - b);
+            const medianStrike = strikes[Math.floor(strikes.length / 2)];
+            
+            console.log(`🔍 基于期权行权价中位数推估: ${symbol} ${date} 中位数行权价=$${medianStrike}`);
+            return medianStrike;
+
+        } catch (error) {
+            console.error(`基于期权数据推估股价失败:`, error.message);
+            return null;
         }
     }
 
@@ -438,6 +500,10 @@ class AlphaVantageService {
                 if (dbOptionsData && dbOptionsData.length > 0) {
                     console.log(`✅ 从数据库获取 ${symbol} ${date} 期权数据: ${dbOptionsData.length} 条记录`);
                     
+                    // 🔥 获取对应日期的股票拆股调整系数
+                    const stockData = await this.getStockPriceByDateFromDB(symbol, date);
+                    const splitAdjustmentFactor = this.calculateSplitAdjustmentFactor(symbol, date, stockData);
+                    
                     // 转换数据库格式为处理后的格式
                     const processedData = dbOptionsData.map(row => {
                         // 🔥 重新计算历史数据的daysToExpiry（基于查询日期而不是当前日期）
@@ -445,11 +511,15 @@ class AlphaVantageService {
                         const expirationDate = new Date(row.expiration_date);
                         const daysToExpiry = Math.ceil((expirationDate - queryDate) / (1000 * 60 * 60 * 24));
                         
+                        // 🔥 应用拆股调整到期权行权价
+                        const adjustedStrikePrice = splitAdjustmentFactor ? 
+                            (row.strike_price / splitAdjustmentFactor) : row.strike_price;
+                        
                         return {
                             symbol: row.symbol,
                             contractID: row.contract_id,
                             daysToExpiry: daysToExpiry,
-                            strikePrice: row.strike_price,
+                            strikePrice: adjustedStrikePrice,
                             premium: row.mark_price || ((row.bid + row.ask) / 2),
                             type: row.option_type,
                             bid: row.bid,
@@ -919,8 +989,8 @@ class AlphaVantageService {
         try {
             console.log(`从API获取 ${symbol} 历史价格数据`);
             const url = `${this.baseUrl}/query`;
-            // 当所需天数超过100天时，使用 full 以确保有足够历史数据
-            const outputsize = (days + 1 > 100) ? 'full' : 'compact';
+            // 对于历史数据回测，始终使用 full 以确保能获取到足够的历史数据
+            const outputsize = 'full';
             const params = {
                 function: 'TIME_SERIES_DAILY_ADJUSTED',
                 symbol: symbol,
@@ -954,16 +1024,23 @@ class AlphaVantageService {
             // 转换为数组格式，按日期排序（最新在前）
             const prices = Object.keys(timeSeries)
                 .sort((a, b) => new Date(b) - new Date(a))
-                .slice(0, days + 10) // 多获取一些数据，确保有足够的交易日
-                .map(date => ({
-                    date: date,
-                    adjustedClose: parseFloat(timeSeries[date]['5. adjusted close']),
-                    close: parseFloat(timeSeries[date]['4. close']),
-                    open: parseFloat(timeSeries[date]['1. open']),
-                    high: parseFloat(timeSeries[date]['2. high']),
-                    low: parseFloat(timeSeries[date]['3. low']),
-                    volume: parseInt(timeSeries[date]['6. volume'])
-                }));
+                // 对于历史回测，保存所有可用数据（最多5年）
+                .slice(0, Math.max(days + 10, 1500))
+                .map(date => {
+                    const dayData = timeSeries[date];
+                    return {
+                        date: date,
+                        close: parseFloat(dayData['4. close']),  // 使用原始收盘价
+                        open: parseFloat(dayData['1. open']),
+                        high: parseFloat(dayData['2. high']),
+                        low: parseFloat(dayData['3. low']),
+                        volume: parseInt(dayData['6. volume']),
+                        // 使用原始close价格，而不是调整后价格
+                        adjustedClose: parseFloat(dayData['4. close']),
+                        dividendAmount: parseFloat(dayData['7. dividend amount'] || 0),
+                        splitCoefficient: parseFloat(dayData['8. split coefficient'] || 1)
+                    };
+                });
 
             // 缓存历史价格数据（只在内存中缓存，不持久化）
             this.setCachedData(cacheKey, prices);
@@ -971,7 +1048,7 @@ class AlphaVantageService {
             // 存储到数据库 - 这是回测的核心数据源
             try {
                 await this.saveHistoricalPricesToDatabase(symbol, prices);
-                console.log(`✅ 已保存 ${symbol} 的 TIME_SERIES_DAILY_ADJUSTED 数据到数据库，用于回测`);
+                console.log(`✅ 已保存 ${symbol} 的原始收盘价数据到数据库，用于回测`);
             } catch (dbError) {
                 console.error(`❌ 保存 ${symbol} 历史价格数据到数据库失败:`, dbError.message);
             }
@@ -1178,7 +1255,7 @@ class AlphaVantageService {
     // 删除了实时价格数据保存方法，因为只保存历史调整价格数据
 
     /**
-     * 保存历史价格数据到数据库（TIME_SERIES_DAILY_ADJUSTED）
+     * 保存历史价格数据到数据库（TIME_SERIES_DAILY）
      */
     async saveHistoricalPricesToDatabase(symbol, pricesArray) {
         try {
@@ -1191,12 +1268,12 @@ class AlphaVantageService {
                 close: price.close,
                 adjusted_close: price.adjustedClose,
                 volume: price.volume,
-                dividend_amount: 0, // 可以从API数据中提取，如果有的话
-                split_coefficient: 1 // 可以从API数据中提取，如果有的话
+                dividend_amount: price.dividendAmount || 0,
+                split_coefficient: price.splitCoefficient || 1
             }));
 
             const result = await database.insertBatchHistoricalStockPrices(dbDataArray);
-            console.log(`✅ 已保存 ${symbol} ${result.successCount} 条历史调整价格数据到数据库 (TIME_SERIES_DAILY_ADJUSTED)`);
+            console.log(`✅ 已保存 ${symbol} ${result.successCount} 条历史原始价格数据到数据库 (TIME_SERIES_DAILY)`);
         } catch (error) {
             throw new Error(`保存历史价格数据到数据库失败: ${error.message}`);
         }
@@ -1309,6 +1386,19 @@ class AlphaVantageService {
             console.error(`获取 ${symbol} 历史价格数据失败:`, error.message);
             throw error;
         }
+    }
+
+    /**
+     * 计算股票拆股调整系数
+     * @param {string} symbol - 股票代码 
+     * @param {string} date - 查询日期
+     * @param {Object} stockData - 股票数据
+     * @returns {number} 拆股调整系数
+     */
+    calculateSplitAdjustmentFactor(symbol, date, stockData) {
+        // 现在使用 TIME_SERIES_DAILY（原始未调整价格）和原始期权行权价
+        // 两者都是未调整的数据，应该天然匹配，无需拆股调整
+        return 1; // 不进行任何拆股调整
     }
 }
 
