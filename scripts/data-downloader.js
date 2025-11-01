@@ -24,7 +24,7 @@ async function showHelp() {
   --symbols <SYMBOL1,SYMBOL2>  指定股票代码(逗号分隔), 默认: NVDA,AAPL,TSLA
   --stock-only                 只下载股价数据
   --options-only              只下载期权数据
-  --delay <ms>                 API调用间隔(毫秒), 默认: 1000 (75次/分钟限制)
+  --delay <ms>                 API调用间隔(毫秒), 默认: 100 (600次/分钟限制)
   --help                       显示此帮助信息
 
 示例:
@@ -201,7 +201,7 @@ function parseArgs() {
         symbols: ['NVDA', 'AAPL', 'TSLA'], // 默认股票
         stockOnly: false,
         optionsOnly: false,
-        delay: 1000 // 默认1秒延迟 (75 calls/min limit)
+        delay: 100 // 默认100ms延迟 (600 calls/min limit)
     };
     
     for (let i = 2; i < args.length; i++) {
@@ -228,8 +228,8 @@ function parseArgs() {
             case '--delay':
                 if (i + 1 < args.length) {
                     config.delay = parseInt(args[i + 1]);
-                    if (isNaN(config.delay) || config.delay < 1000) {
-                        throw new Error('延迟时间必须大于等于1000毫秒');
+                    if (isNaN(config.delay) || config.delay < 100) {
+                        throw new Error('延迟时间必须大于等于100毫秒');
                     }
                     i++;
                 } else {

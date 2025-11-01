@@ -16,7 +16,7 @@ class NVDAHistoricalBenchmarkService {
         this.rawDataFile = path.join(this.cacheDir, 'nvda-raw-historical-data.json');
         
         // API调用限制：75次/分钟，所以每次调用间隔800ms
-        this.apiCallDelay = 800; // 毫秒
+        this.apiCallDelay = 100; // 毫秒
         
         // DTE区间定义
         this.dteRanges = {
