@@ -43,10 +43,10 @@ pip install pandas numpy sqlite3
 ```bash
 cd backtest
 
-# 检查数据库状态
+# 检查数据库状态和连接
 python database_interface.py
 
-# 运行完整回测
+# 运行完整的Covered Call回测
 python database_backtest.py
 ```
 
